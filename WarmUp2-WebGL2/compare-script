@@ -1,0 +1,14 @@
+#!/bin/bash
+
+student=$1
+ref=$2 
+
+if [ -z $ref ]; then
+    ref=tests/rast-$student
+fi
+
+
+compare -fuzz 2% student.png ref.png ae.png
+composite student.png ref.png -alpha off -compose difference rawdiff.png
+convert rawdiff.png -level 0%,8% diff.png
+convert +append ref.png student.png ae.png rawdiff.png diff.png look_at_this.png
