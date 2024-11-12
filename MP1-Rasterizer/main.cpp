@@ -19,7 +19,6 @@ vector<int> indices;
 int width, height;
 string outputFilename;
 
-
 // Parse input file function remains the same
 void parseInputFile(const string& filename) {
     ifstream file(filename);
@@ -77,10 +76,7 @@ void computeBarycentricCoordinates(float x, float y,
     w2 = 1.0f - w0 - w1;
 }
 
-void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, 
-                      vector<vector<uint8_t>>& imageR,
-                      vector<vector<uint8_t>>& imageG,
-                      vector<vector<uint8_t>>& imageB) {
+void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, Image& img) {
     // Find bounding box
     int minX = max(0, (int)floor(min({v0.x, v1.x, v2.x})));
     int maxX = min(width - 1, (int)ceil(max({v0.x, v1.x, v2.x})));
@@ -100,21 +96,17 @@ void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2,
                 float g = interpolate(v0.g, v1.g, v2.g, w0, w1, w2);
                 float b = interpolate(v0.b, v1.b, v2.b, w0, w1, w2);
                 
-                // Convert to 8-bit color
-                imageR[y][x] = (uint8_t)(r * 255);
-                imageG[y][x] = (uint8_t)(g * 255);
-                imageB[y][x] = (uint8_t)(b * 255);
+                // Convert to 8-bit color and set pixel
+                img[y][x].red = (uint8_t)(r * 255);
+                img[y][x].green = (uint8_t)(g * 255);
+                img[y][x].blue = (uint8_t)(b * 255);
+                img[y][x].alpha = 0xFF;  // Fully opaque where triangles are drawn
             }
         }
     }
 }
 
-
-
-
-void scanlineAlgorithm(vector<vector<uint8_t>>& imageR,
-                      vector<vector<uint8_t>>& imageG,
-                      vector<vector<uint8_t>>& imageB) {
+void scanlineAlgorithm(Image& img) {
     // Process each triangle
     for (size_t i = 0; i < indices.size(); i += 3) {
         if (indices[i] < vertices.size() && indices[i + 1] < vertices.size() && indices[i + 2] < vertices.size()) {
@@ -130,54 +122,10 @@ void scanlineAlgorithm(vector<vector<uint8_t>>& imageR,
             v2.x = (v2.x / v2.w + 1) * width / 2;
             v2.y = (v2.y / v2.w + 1) * height / 2;
 
-            rasterizeTriangle(v0, v1, v2, imageR, imageG, imageB);
+            rasterizeTriangle(v0, v1, v2, img);
         }
     }
 }
-
-void savePNG(const string& filename, 
-             const vector<vector<uint8_t>>& imageR,
-             const vector<vector<uint8_t>>& imageG,
-             const vector<vector<uint8_t>>& imageB) {
-    FILE *fp = fopen(filename.c_str(), "wb");
-    if (!fp) abort();
-
-    png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (!png) abort();
-
-    png_infop info = png_create_info_struct(png);
-    if (!info) abort();
-
-    if (setjmp(png_jmpbuf(png))) abort();
-
-    png_init_io(png, fp);
-    png_set_IHDR(png, info, width, height, 8, PNG_COLOR_TYPE_RGB,
-                 PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-    png_write_info(png, info);
-
-    vector<uint8_t> row(width * 3);
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            row[x * 3 + 0] = imageR[y][x];
-            row[x * 3 + 1] = imageG[y][x];
-            row[x * 3 + 2] = imageB[y][x];
-        }
-        png_write_row(png, row.data());
-    }
-
-    png_write_end(png, NULL);
-    fclose(fp);
-    png_destroy_write_struct(&png, &info);
-}
-
-
-
-
-
-
-
-
-
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -186,6 +134,19 @@ int main(int argc, char* argv[]) {
     }
 
     parseInputFile(argv[1]);
+
+    // Create image with transparent background
+    Image img(width, height);
+    
+    // Initialize the image with transparent background
+    for (int y = 0; y < img.height(); y++) {
+        for (int x = 0; x < img.width(); x++) {
+            img[y][x].red = 0;
+            img[y][x].green = 0;
+            img[y][x].blue = 0;
+            img[y][x].alpha = 0;  // Set alpha to 0 for full transparency
+        }
+    }
 
     // Debug print indices
     cout << "Indices: ";
@@ -197,25 +158,12 @@ int main(int argc, char* argv[]) {
     // Print vertices with color information
     cout << "Vertices: " << endl;
     for (const Vertex& v : vertices) {
-        cout << v.x << " " << v.y << " " << v.z << " " << v.w << " " << v.r << " " << v.g << " " << v.b << endl;
+        cout << v.x << " " << v.y << " " << v.z << " " << v.w << " " 
+             << v.r << " " << v.g << " " << v.b << endl;
     }
 
-    // Initialize separate color channels
-    vector<vector<uint8_t>> imageR(height, vector<uint8_t>(width, 0));
-    vector<vector<uint8_t>> imageG(height, vector<uint8_t>(width, 0));
-    vector<vector<uint8_t>> imageB(height, vector<uint8_t>(width, 0));
-
-    // for (int y = 0; y < height; y++) {
-    //     for (int x = 0; x < width; x++) {
-    //         uint8_t grayValue = (x / 10 % 2 == 0) ? 192 : 128; // Alternating gray stripes
-    //         imageR[y][x] = grayValue;
-    //         imageG[y][x] = grayValue;
-    //         imageB[y][x] = grayValue;
-    //     }
-    // }
-
-    scanlineAlgorithm(imageR, imageG, imageB);
-    savePNG(outputFilename, imageR, imageG, imageB);
+    scanlineAlgorithm(img);
+    img.save(outputFilename.c_str());
 
     return 0;
 }
