@@ -19,7 +19,6 @@ vector<int> indices;
 int width, height;
 string outputFilename;
 
-
 // Parse input file function remains the same
 void parseInputFile(const string& filename) {
     ifstream file(filename);
@@ -109,9 +108,6 @@ void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2,
     }
 }
 
-
-
-
 void scanlineAlgorithm(vector<vector<uint8_t>>& imageR,
                       vector<vector<uint8_t>>& imageG,
                       vector<vector<uint8_t>>& imageB) {
@@ -170,15 +166,6 @@ void savePNG(const string& filename,
     png_destroy_write_struct(&png, &info);
 }
 
-
-
-
-
-
-
-
-
-
 int main(int argc, char* argv[]) {
     if (argc != 2) {
         cerr << "Usage: " << argv[0] << " <input file>" << endl;
@@ -187,32 +174,10 @@ int main(int argc, char* argv[]) {
 
     parseInputFile(argv[1]);
 
-    // Debug print indices
-    cout << "Indices: ";
-    for (int idx : indices) {
-        cout << idx << " ";
-    }
-    cout << endl;
-
-    // Print vertices with color information
-    cout << "Vertices: " << endl;
-    for (const Vertex& v : vertices) {
-        cout << v.x << " " << v.y << " " << v.z << " " << v.w << " " << v.r << " " << v.g << " " << v.b << endl;
-    }
-
     // Initialize separate color channels
     vector<vector<uint8_t>> imageR(height, vector<uint8_t>(width, 0));
     vector<vector<uint8_t>> imageG(height, vector<uint8_t>(width, 0));
     vector<vector<uint8_t>> imageB(height, vector<uint8_t>(width, 0));
-
-    // for (int y = 0; y < height; y++) {
-    //     for (int x = 0; x < width; x++) {
-    //         uint8_t grayValue = (x / 10 % 2 == 0) ? 192 : 128; // Alternating gray stripes
-    //         imageR[y][x] = grayValue;
-    //         imageG[y][x] = grayValue;
-    //         imageB[y][x] = grayValue;
-    //     }
-    // }
 
     scanlineAlgorithm(imageR, imageG, imageB);
     savePNG(outputFilename, imageR, imageG, imageB);
