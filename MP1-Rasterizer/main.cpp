@@ -28,8 +28,12 @@ struct Vertex {
 vector<Position> positions;
 vector<Color> colors;
 vector<Vertex> vertices;  // Combined vertices after parsing
+vector<vector<float>> depthBuffer;
+bool depthTestEnabled = false;
+
 int width, height;
 string outputFilename;
+
 
 // Function prototypes
 void combineVertices();
@@ -83,8 +87,12 @@ void parseInputFile(const string& filename, Image& img) {
         istringstream iss(line);
         string keyword;
         iss >> keyword;
-        
-        if (keyword == "color") {
+
+        if (keyword == "depth") {
+            depthTestEnabled = true;
+            depthBuffer.resize(height, vector<float>(width, numeric_limits<float>::infinity()));
+        }
+        else if (keyword == "color") {
             colors.clear();  // Clear existing colors
             int size;
             iss >> size;
@@ -165,20 +173,27 @@ void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ima
             
             // Check if point is inside triangle
             if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-                // Interpolate colors
-                float r = interpolate(v0.r, v1.r, v2.r, w0, w1, w2);
-                float g = interpolate(v0.g, v1.g, v2.g, w0, w1, w2);
-                float b = interpolate(v0.b, v1.b, v2.b, w0, w1, w2);
+                float z = interpolate(v0.z, v1.z, v2.z, w0, w1, w2);
 
-                // Check bounds before accessing img
-                if (y >= 0 && y < height && x >= 0 && x < width) {
-                    // Convert to 8-bit color and set pixel
-                    img[y][x].red = (uint8_t)(r * 255);
-                    img[y][x].green = (uint8_t)(g * 255);
-                    img[y][x].blue = (uint8_t)(b * 255);
-                    img[y][x].alpha = 0xFF;  // Fully opaque where triangles are drawn
-                } else {
-                    cout << "Pixel out of bounds: (" << x << ", " << y << ")" << endl;
+                if (!depthTestEnabled || z < depthBuffer[y][x]) {
+                    // Interpolate colors
+                    float r = interpolate(v0.r, v1.r, v2.r, w0, w1, w2);
+                    float g = interpolate(v0.g, v1.g, v2.g, w0, w1, w2);
+                    float b = interpolate(v0.b, v1.b, v2.b, w0, w1, w2);
+
+                    // Check bounds before accessing img
+                    if (y >= 0 && y < height && x >= 0 && x < width) {
+                        // Convert to 8-bit color and set pixel
+                        img[y][x].red = (uint8_t)(r * 255);
+                        img[y][x].green = (uint8_t)(g * 255);
+                        img[y][x].blue = (uint8_t)(b * 255);
+                        img[y][x].alpha = 0xFF;  // Fully opaque where triangles are drawn
+                        if (depthTestEnabled) {
+                                depthBuffer[y][x] = z;
+                            }
+                    } else {
+                        cout << "Pixel out of bounds: (" << x << ", " << y << ")" << endl;
+                    }
                 }
             }
         }
