@@ -9,90 +9,118 @@
 
 using namespace std;
 
+struct Position {
+    float x, y, z, w;
+    Position() : x(0), y(0), z(0), w(1) {}
+};
+
+struct Color {
+    float r, g, b, a;
+    Color() : r(0), g(0), b(0), a(1) {}
+};
+
 struct Vertex {
     float x, y, z, w;
     float r, g, b, a;
 };
 
-vector<Vertex> vertices;
+// Separate vectors for positions and colors
+vector<Position> positions;
+vector<Color> colors;
+vector<Vertex> vertices;  // Combined vertices after parsing
 vector<int> indices;
 int width, height;
 string outputFilename;
 
+// Combine positions and colors into final vertices
+void combineVertices() {
+    size_t vertexCount = max(positions.size(), colors.size());
+    vertices.resize(vertexCount);
+    
+    // Default color (white) for vertices without color
+    Color defaultColor;
+    defaultColor.r = 1.0f;
+    defaultColor.g = 1.0f;
+    defaultColor.b = 1.0f;
+    defaultColor.a = 1.0f;
+    
+    // Default position (origin) for colors without position
+    Position defaultPosition;
+    
+    for (size_t i = 0; i < vertexCount; ++i) {
+        Vertex& v = vertices[i];
+        
+        // Get position (use default if not enough positions)
+        const Position& pos = (i < positions.size()) ? positions[i] : defaultPosition;
+        v.x = pos.x;
+        v.y = pos.y;
+        v.z = pos.z;
+        v.w = pos.w;
+        
+        // Get color (use default if not enough colors)
+        const Color& col = (i < colors.size()) ? colors[i] : defaultColor;
+        v.r = col.r;
+        v.g = col.g;
+        v.b = col.b;
+        v.a = col.a;
+    }
+    
+    // Log the combination results
+    cout << "Combined " << positions.size() << " positions and " 
+         << colors.size() << " colors into " << vertices.size() 
+         << " vertices." << endl;
+}
 
-// Temporary storage for color information if it appears before position data
-struct ColorData {
-    float r, g, b, a;
-};
-vector<ColorData> tempColors;
-
-
-
-// Parse input file function remains the same
 void parseInputFile(const string& filename) {
     ifstream file(filename);
     string line;
+    
     while (getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;  // Skip empty lines and comments
+        if (line.empty() || line[0] == '#') continue;
         
         istringstream iss(line);
         string keyword;
         iss >> keyword;
+        
         if (keyword == "png") {
             iss >> width >> height >> outputFilename;
-        } else if (keyword == "position") {
+        } 
+        else if (keyword == "color") {
             int size;
             iss >> size;
-            while (true) {
-                Vertex v;
-                if (!(iss >> v.x >> v.y)) break;
-                v.z = 0.0f;
-                v.w = 1.0f;
-                if (size >= 3 && !(iss >> v.z)) break;
-                if (size == 4 && !(iss >> v.w)) break;
-                vertices.push_back(v);
-            }
-            // If color data was parsed before position, apply colors to vertices
-            if (!tempColors.empty()) {
-                for (size_t i = 0; i < vertices.size() && i < tempColors.size(); ++i) {
-                    vertices[i].r = tempColors[i].r;
-                    vertices[i].g = tempColors[i].g;
-                    vertices[i].b = tempColors[i].b;
-                    vertices[i].a = tempColors[i].a;
-                }
-                tempColors.clear();  // Clear temporary colors after applying
+            
+            if (size != 3 && size != 4) {
+                throw runtime_error("Invalid color size; only 3 or 4 are allowed for RGB or RGBA.");
             }
             
-        } else if (keyword == "color") {
-            // Check if size is valid
+            while (true) {
+                Color color;
+                if (!(iss >> color.r >> color.g >> color.b)) break;
+                if (size == 4 && !(iss >> color.a)) {
+                    throw runtime_error("Alpha value missing for RGBA color.");
+                }
+                colors.push_back(color);
+            }
+            
+            cout << "Parsed " << colors.size() << " colors" << endl;
+        }
+        else if (keyword == "position") {
             int size;
             iss >> size;
-
-            // Check if size is valid
-            if (size != 3 && size != 4) {
-                throw std::runtime_error("Invalid size; only 3 or 4 are allowed for RGB or RGBA.");
+            
+            while (true) {
+                Position pos;
+                if (!(iss >> pos.x >> pos.y)) break;
+                pos.z = 0.0f;
+                pos.w = 1.0f;
+                if (size >= 3 && !(iss >> pos.z)) break;
+                if (size == 4 && !(iss >> pos.w)) break;
+                positions.push_back(pos);
             }
-
-            float r, g, b, a = 1.0f;
-            while (iss >> r >> g >> b) {
-                if (size == 4 && !(iss >> a)) {
-                    throw std::runtime_error("Alpha value missing for RGBA color.");
-                }
-
-                if (!vertices.empty()) {
-                    // If vertices are available, directly apply colors to them
-                    if (tempColors.size() < vertices.size()) {
-                        vertices[tempColors.size()].r = r;
-                        vertices[tempColors.size()].g = g;
-                        vertices[tempColors.size()].b = b;
-                        vertices[tempColors.size()].a = a;
-                    }
-                } else {
-                    // If vertices are not yet parsed, store color data temporarily
-                    tempColors.push_back({r, g, b, a});
-                }
-            }
-        } else if (keyword == "drawArraysTriangles") {
+            
+            cout << "Parsed " << positions.size() << " positions" << endl;
+        }
+        else if (keyword == "drawArraysTriangles") {
             int start, count;
             iss >> start >> count;
             for (int i = 0; i < count; ++i) {
@@ -100,6 +128,9 @@ void parseInputFile(const string& filename) {
             }
         }
     }
+    
+    // After parsing, combine positions and colors into final vertices
+    combineVertices();
 }
 
 // Interpolate values based on barycentric coordinates
@@ -166,10 +197,10 @@ void scanlineAlgorithm(Image& img) {
             v2.x = (v2.x / v2.w + 1) * width / 2;
             v2.y = (v2.y / v2.w + 1) * height / 2;
 
-            cout << "Vertices 1: " << endl;
-            cout << v0.x << " " << v0.y << endl;
-            cout << v1.x << " " << v1.y << endl;
-            cout << v2.x << " " << v2.y << endl;
+            // cout << "Vertices 1: " << endl;
+            // cout << v0.x << " " << v0.y << endl;
+            // cout << v1.x << " " << v1.y << endl;
+            // cout << v2.x << " " << v2.y << endl;
             // for (const Vertex& v : vertices) {
                 
             // }
