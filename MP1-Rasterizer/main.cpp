@@ -19,6 +19,15 @@ vector<int> indices;
 int width, height;
 string outputFilename;
 
+
+// Temporary storage for color information if it appears before position data
+struct ColorData {
+    float r, g, b, a;
+};
+vector<ColorData> tempColors;
+
+
+
 // Parse input file function remains the same
 void parseInputFile(const string& filename) {
     ifstream file(filename);
@@ -43,21 +52,18 @@ void parseInputFile(const string& filename) {
                 if (size == 4 && !(iss >> v.w)) break;
                 vertices.push_back(v);
             }
+            // If color data was parsed before position, apply colors to vertices
+            if (!tempColors.empty()) {
+                for (size_t i = 0; i < vertices.size() && i < tempColors.size(); ++i) {
+                    vertices[i].r = tempColors[i].r;
+                    vertices[i].g = tempColors[i].g;
+                    vertices[i].b = tempColors[i].b;
+                    vertices[i].a = tempColors[i].a;
+                }
+                tempColors.clear();  // Clear temporary colors after applying
+            }
+            
         } else if (keyword == "color") {
-            // int count;
-            // iss >> count;
-            // for (int i = 0; i < count; ++i) {
-            //     float r, g, b;
-            //     iss >> r >> g >> b;
-            //     if (!vertices.empty()) {
-            //         vertices[i].r = r;
-            //         vertices[i].g = g;
-            //         vertices[i].b = b;
-            //     }
-            // }
-            // if (size < 3 || size > 4) {
-            //     throw std::runtime_error("Invalid size");
-            // }
             // Check if size is valid
             int size;
             iss >> size;
@@ -67,29 +73,24 @@ void parseInputFile(const string& filename) {
                 throw std::runtime_error("Invalid size; only 3 or 4 are allowed for RGB or RGBA.");
             }
 
-            int i = 0;
-            float r, g, b, a = 1.0f;  // Default alpha to 1 (opaque)
-
-            // Debugging: print vertex count for verification
-            std::cout << "Expected vertices count: " << vertices.size() << std::endl;
-
+            float r, g, b, a = 1.0f;
             while (iss >> r >> g >> b) {
-                // Read alpha if size is 4
                 if (size == 4 && !(iss >> a)) {
                     throw std::runtime_error("Alpha value missing for RGBA color.");
                 }
 
-                if (!vertices.empty() && i < vertices.size()) {
-                // if (!vertices.empty()) {
-                    vertices[i].r = r;
-                    vertices[i].g = g;
-                    vertices[i].b = b;
-                    vertices[i].a = a;
+                if (!vertices.empty()) {
+                    // If vertices are available, directly apply colors to them
+                    if (tempColors.size() < vertices.size()) {
+                        vertices[tempColors.size()].r = r;
+                        vertices[tempColors.size()].g = g;
+                        vertices[tempColors.size()].b = b;
+                        vertices[tempColors.size()].a = a;
+                    }
+                } else {
+                    // If vertices are not yet parsed, store color data temporarily
+                    tempColors.push_back({r, g, b, a});
                 }
-                
-                // Debugging: print each color as it's read
-                std::cout << "Parsed color for vertex " << i << ": " << vertices[i].r << " " << vertices[i].g << " " << vertices[i].b << " " << vertices[i].a << std::endl;
-                i++;
             }
         } else if (keyword == "drawArraysTriangles") {
             int start, count;
