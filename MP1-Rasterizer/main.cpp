@@ -28,12 +28,19 @@ struct Vertex {
 vector<Position> positions;
 vector<Color> colors;
 vector<Vertex> vertices;  // Combined vertices after parsing
-vector<int> indices;
 int width, height;
 string outputFilename;
 
-// Combine positions and colors into final vertices
+// Function prototypes
+void combineVertices();
+void parseInputFile(const string& filename, Image& img);
+void scanlineAlgorithm(Image& img, const vector<int>& currentIndices);
+void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, Image& img);
+float interpolate(float v0, float v1, float v2, float w0, float w1, float w2);
+void computeBarycentricCoordinates(float x, float y, const Vertex& v0, const Vertex& v1, const Vertex& v2, float& w0, float& w1, float& w2);
+
 void combineVertices() {
+    vertices.clear();  // Clear previous vertices
     size_t vertexCount = max(positions.size(), colors.size());
     vertices.resize(vertexCount);
     
@@ -64,14 +71,9 @@ void combineVertices() {
         v.b = col.b;
         v.a = col.a;
     }
-    
-    // Log the combination results
-    cout << "Combined " << positions.size() << " positions and " 
-         << colors.size() << " colors into " << vertices.size() 
-         << " vertices." << endl;
 }
 
-void parseInputFile(const string& filename) {
+void parseInputFile(const string& filename, Image& img) {
     ifstream file(filename);
     string line;
     
@@ -82,29 +84,21 @@ void parseInputFile(const string& filename) {
         string keyword;
         iss >> keyword;
         
-        if (keyword == "png") {
-            iss >> width >> height >> outputFilename;
-        } 
-        else if (keyword == "color") {
+        if (keyword == "color") {
+            colors.clear();  // Clear existing colors
             int size;
             iss >> size;
-            
-            if (size != 3 && size != 4) {
-                throw runtime_error("Invalid color size; only 3 or 4 are allowed for RGB or RGBA.");
-            }
             
             while (true) {
                 Color color;
                 if (!(iss >> color.r >> color.g >> color.b)) break;
-                if (size == 4 && !(iss >> color.a)) {
-                    throw runtime_error("Alpha value missing for RGBA color.");
-                }
+                if (size == 4 && !(iss >> color.a)) break;
                 colors.push_back(color);
             }
-            
             cout << "Parsed " << colors.size() << " colors" << endl;
         }
         else if (keyword == "position") {
+            positions.clear();  // Clear existing positions
             int size;
             iss >> size;
             
@@ -117,25 +111,32 @@ void parseInputFile(const string& filename) {
                 if (size == 4 && !(iss >> pos.w)) break;
                 positions.push_back(pos);
             }
-            
             cout << "Parsed " << positions.size() << " positions" << endl;
         }
         else if (keyword == "drawArraysTriangles") {
             int start, count;
             iss >> start >> count;
+            
+            // Combine vertices before creating indices
+            combineVertices();
+            
+            // Create indices for this draw call
+            vector<int> currentIndices;
             for (int i = 0; i < count; ++i) {
-                indices.push_back(start + i);
+                currentIndices.push_back(start + i);
             }
+            
+            // Process this set of triangles
+            scanlineAlgorithm(img, currentIndices);
         }
     }
-    
-    // After parsing, combine positions and colors into final vertices
-    combineVertices();
 }
+
+
+
 
 // Interpolate values based on barycentric coordinates
 float interpolate(float v0, float v1, float v2, float w0, float w1, float w2) {
-    // cout<< "Interpolating: " << v0 << " " << v1 << " " << v2 << " " << w0 << " " << w1 << " " << w2 << endl;
     return v0 * w0 + v1 * w1 + v2 * w2;
 }
 
@@ -169,25 +170,34 @@ void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ima
                 float g = interpolate(v0.g, v1.g, v2.g, w0, w1, w2);
                 float b = interpolate(v0.b, v1.b, v2.b, w0, w1, w2);
 
-                // cout<< "Interpolated color: " << r << " " << g << " " << b << endl;
-                
-                // Convert to 8-bit color and set pixel
-                img[y][x].red = (uint8_t)(r * 255);
-                img[y][x].green = (uint8_t)(g * 255);
-                img[y][x].blue = (uint8_t)(b * 255);
-                img[y][x].alpha = 0xFF;  // Fully opaque where triangles are drawn
+                // Check bounds before accessing img
+                if (y >= 0 && y < height && x >= 0 && x < width) {
+                    // Convert to 8-bit color and set pixel
+                    img[y][x].red = (uint8_t)(r * 255);
+                    img[y][x].green = (uint8_t)(g * 255);
+                    img[y][x].blue = (uint8_t)(b * 255);
+                    img[y][x].alpha = 0xFF;  // Fully opaque where triangles are drawn
+                } else {
+                    cout << "Pixel out of bounds: (" << x << ", " << y << ")" << endl;
+                }
             }
         }
     }
 }
 
-void scanlineAlgorithm(Image& img) {
+void scanlineAlgorithm(Image& img, const vector<int>& currentIndices) {
     // Process each triangle
-    for (size_t i = 0; i < indices.size(); i += 3) {
-        if (indices[i] < vertices.size() && indices[i + 1] < vertices.size() && indices[i + 2] < vertices.size()) {
-            Vertex v0 = vertices[indices[i]];
-            Vertex v1 = vertices[indices[i + 1]];
-            Vertex v2 = vertices[indices[i + 2]];
+    for (size_t i = 0; i < currentIndices.size(); i += 3) {
+        if (i + 2 >= currentIndices.size()) break;
+        
+        size_t idx0 = currentIndices[i];
+        size_t idx1 = currentIndices[i + 1];
+        size_t idx2 = currentIndices[i + 2];
+        
+        if (idx0 < vertices.size() && idx1 < vertices.size() && idx2 < vertices.size()) {
+            Vertex v0 = vertices[idx0];
+            Vertex v1 = vertices[idx1];
+            Vertex v2 = vertices[idx2];
 
             // Apply viewport transformation
             v0.x = (v0.x / v0.w + 1) * width / 2;
@@ -197,13 +207,10 @@ void scanlineAlgorithm(Image& img) {
             v2.x = (v2.x / v2.w + 1) * width / 2;
             v2.y = (v2.y / v2.w + 1) * height / 2;
 
-            // cout << "Vertices 1: " << endl;
-            // cout << v0.x << " " << v0.y << endl;
-            // cout << v1.x << " " << v1.y << endl;
-            // cout << v2.x << " " << v2.y << endl;
-            // for (const Vertex& v : vertices) {
-                
-            // }
+            cout << "Triangle vertices after transform:" << endl;
+            cout << v0.x << "," << v0.y << " " << v0.r << "," << v0.g << "," << v0.b << endl;
+            cout << v1.x << "," << v1.y << " " << v1.r << "," << v1.g << "," << v1.b << endl;
+            cout << v2.x << "," << v2.y << " " << v2.r << "," << v2.g << "," << v2.b << endl;
 
             rasterizeTriangle(v0, v1, v2, img);
         }
@@ -216,36 +223,35 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    parseInputFile(argv[1]);
-
-    // Create image with transparent background
-    Image img(width, height);
+    // First pass to get PNG parameters
+    ifstream file(argv[1]);
+    string line;
+    bool foundPNG = false;
     
-    // Initialize the image with transparent background
-    // for (int y = 0; y < img.height(); y++) {
-    //     for (int x = 0; x < img.width(); x++) {
-    //         img[y][x].red = 0;
-    //         img[y][x].green = 0;
-    //         img[y][x].blue = 0;
-    //         img[y][x].alpha = 0;  // Set alpha to 0 for full transparency
-    //     }
-    // }
-
-    // Debug print indices
-    cout << "Indices: ";
-    for (int idx : indices) {
-        cout << idx << " ";
+    while (getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        
+        istringstream iss(line);
+        string keyword;
+        iss >> keyword;
+        
+        if (keyword == "png") {
+            iss >> width >> height >> outputFilename;
+            foundPNG = true;
+            break;
+        }
     }
-    cout << endl;
-
-    // Print vertices with color information
-    cout << "Vertices: " << endl;
-    for (const Vertex& v : vertices) {
-        cout << v.x << " " << v.y << " " << v.z << " " << v.w << " " 
-             << v.r << " " << v.g << " " << v.b << endl;
+    
+    if (!foundPNG) {
+        cerr << "Error: No PNG parameters found in input file" << endl;
+        return 1;
     }
 
-    scanlineAlgorithm(img);
+    // Create image and parse file
+    Image img(width, height);
+    cout << "Creating image: " << width << " x " << height << " -> " << outputFilename << endl;
+    
+    parseInputFile(argv[1], img);
     img.save(outputFilename.c_str());
 
     return 0;
