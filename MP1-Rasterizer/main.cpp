@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <limits>
 #include <png.h>
 #include "uselibpng.h"
 
@@ -29,11 +30,11 @@ vector<Position> positions;
 vector<Color> colors;
 vector<Vertex> vertices;  // Combined vertices after parsing
 vector<vector<float>> depthBuffer;
+vector<int> elements;
 bool depthTestEnabled = false;
 
 int width, height;
 string outputFilename;
-
 
 // Function prototypes
 void combineVertices();
@@ -121,6 +122,18 @@ void parseInputFile(const string& filename, Image& img) {
             }
             cout << "Parsed " << positions.size() << " positions" << endl;
         }
+        else if (keyword == "elements") {
+            elements.clear();  // Clear existing elements
+            int index;
+            while (iss >> index) {
+                elements.push_back(index);
+            }
+            cout << "Parsed " << elements.size() << " elements" << endl;
+            // for (int i = 0; i < elements.size(); i++) {
+            //     cout << elements[i] << " ";
+            // }
+            cout << endl;
+        }
         else if (keyword == "drawArraysTriangles") {
             int start, count;
             iss >> start >> count;
@@ -137,11 +150,24 @@ void parseInputFile(const string& filename, Image& img) {
             // Process this set of triangles
             scanlineAlgorithm(img, currentIndices);
         }
+        else if (keyword == "drawElementsTriangles") {
+            int count, offset;
+            iss >> count >> offset;
+
+            // Combine vertices before creating indices
+            combineVertices();
+            
+            // Create indices for this draw call
+            vector<int> currentIndices;
+            for (int i = 0; i < count; ++i) {
+                currentIndices.push_back(elements[offset + i]);
+            }
+            
+            // Process this set of triangles
+            scanlineAlgorithm(img, currentIndices);
+        }
     }
 }
-
-
-
 
 // Interpolate values based on barycentric coordinates
 float interpolate(float v0, float v1, float v2, float w0, float w1, float w2) {
@@ -189,8 +215,8 @@ void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ima
                         img[y][x].blue = (uint8_t)(b * 255);
                         img[y][x].alpha = 0xFF;  // Fully opaque where triangles are drawn
                         if (depthTestEnabled) {
-                                depthBuffer[y][x] = z;
-                            }
+                            depthBuffer[y][x] = z;
+                        }
                     } else {
                         cout << "Pixel out of bounds: (" << x << ", " << y << ")" << endl;
                     }
@@ -200,7 +226,14 @@ void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ima
     }
 }
 
+
+
 void scanlineAlgorithm(Image& img, const vector<int>& currentIndices) {
+
+    // for(int i = 0; i < currentIndices.size(); i++) {
+    //     cout << currentIndices[i] << " ";
+    // }
+    // cout<<endl;
     // Process each triangle
     for (size_t i = 0; i < currentIndices.size(); i += 3) {
         if (i + 2 >= currentIndices.size()) break;
@@ -208,6 +241,9 @@ void scanlineAlgorithm(Image& img, const vector<int>& currentIndices) {
         size_t idx0 = currentIndices[i];
         size_t idx1 = currentIndices[i + 1];
         size_t idx2 = currentIndices[i + 2];
+
+        cout << idx0 << " " << idx1 << " " << idx2 << endl;
+        cout << vertices.size() << endl;
         
         if (idx0 < vertices.size() && idx1 < vertices.size() && idx2 < vertices.size()) {
             Vertex v0 = vertices[idx0];
