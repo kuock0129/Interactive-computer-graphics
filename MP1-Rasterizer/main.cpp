@@ -44,6 +44,20 @@ void rasterizeTriangle(const Vertex& v0, const Vertex& v1, const Vertex& v2, Ima
 float interpolate(float v0, float v1, float v2, float w0, float w1, float w2);
 void computeBarycentricCoordinates(float x, float y, const Vertex& v0, const Vertex& v1, const Vertex& v2, float& w0, float& w1, float& w2);
 
+// Helper function to convert linear RGB to sRGB
+float linearToSrgb(float value) {
+    value = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+
+    // cout<< "Converting to sRGB - Original Value: " << value << endl;
+    if (value <= 0.0031308f) {
+        // cout<< "Converted to sRGB - Transfered Value: " << 12.92f * value << endl;
+        return 12.92f * value;
+    } else {
+        // cout<< "Converted to sRGB - Transfered Value: " << 1.055f * pow(value, 1.0f / 2.2f) - 0.055f << endl;
+        return 1.055f * pow(value, 1.0f / 2.4f) - 0.055f;
+    }
+}
+
 void combineVertices() {
     vertices.clear();  // Clear previous vertices
     size_t vertexCount = max(positions.size(), colors.size());
@@ -81,6 +95,8 @@ void combineVertices() {
 void parseInputFile(const string& filename, Image& img) {
     ifstream file(filename);
     string line;
+    // flag to apply sRGB conversion to all colors
+    bool applySrgb = false;
     
     while (getline(file, line)) {
         if (line.empty() || line[0] == '#') continue;
@@ -93,6 +109,16 @@ void parseInputFile(const string& filename, Image& img) {
             depthTestEnabled = true;
             depthBuffer.resize(height, vector<float>(width, numeric_limits<float>::infinity()));
         }
+        else if (keyword == "sRGB"){
+            // // Apply sRGB conversion to all colors
+            // for (Color& color : colors) {
+            //     color.r = linearToSrgb(color.r);
+            //     color.g = linearToSrgb(color.g);
+            //     color.b = linearToSrgb(color.b);
+            //     cout << "Converted color to sRGB: " << color.r << " " << color.g << " " << color.b << endl;
+            // }
+            applySrgb = true;
+        }
         else if (keyword == "color") {
             colors.clear();  // Clear existing colors
             int size;
@@ -102,6 +128,11 @@ void parseInputFile(const string& filename, Image& img) {
                 Color color;
                 if (!(iss >> color.r >> color.g >> color.b)) break;
                 if (size == 4 && !(iss >> color.a)) break;
+                if (applySrgb) {
+                    color.r = linearToSrgb(color.r);
+                    color.g = linearToSrgb(color.g);
+                    color.b = linearToSrgb(color.b);
+                }
                 colors.push_back(color);
             }
             cout << "Parsed " << colors.size() << " colors" << endl;
