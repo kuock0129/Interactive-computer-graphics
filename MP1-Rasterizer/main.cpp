@@ -12,306 +12,242 @@
 
 using namespace std;
 
+// Global variables for image dimensions and output
 int width, height;
 string outputFilename;
 
-class Vertex {
-public:
+// Structs instead of classes
+struct Vertex {
     double x{0}, y{0}, z{0}, w{1.0}; // Position
     double r{0}, g{0}, b{0}, a{1.0}; // Color
-    double s{0}, t{0};      // Texture coordinates
-    
-    // Applies a 4x4 transformation matrix to the vertex.
-    Vertex& transform(const vector<double>& matrix) {
-        vector<double> result(4, 0.0);
-        for (int i = 0; i < 4; i++) {
-            for (int j = 0; j < 4; j++) {
-                result[i] += matrix[i * 4 + j] * getValue(j);
-            }
-        }
-        x = result[0]; y = result[1]; z = result[2]; w = result[3];
-        return *this;
-    }
-
-    // Normalizes the vertex position to screen coordinates.
-    // Converts a vertex to normalized device coordinates and then maps them to screen space.
-    Vertex normalized(int width, int height, bool enableHyp) const {
-        Vertex result = *this;
-        if (w != 0) {
-            result.x /= w;
-            result.y /= w;
-            result.z /= w;
-            if (enableHyp) {
-                result.r /= w;
-                result.g /= w;
-                result.b /= w;
-                result.a /= w;
-                result.s /= w;
-                result.t /= w;
-            }
-        }
-        result.x = (result.x + 1) * width / 2;
-        result.y = (result.y + 1) * height / 2;
-        return result;
-    }
-
-    // Implements basic arithmetic operations (addition, subtraction, scaling) for vertices.
-    Vertex operator-(const Vertex& other) const {
-        Vertex result;
-        result.x = x - other.x;
-        result.y = y - other.y;
-        result.z = z - other.z;
-        result.w = w - other.w;
-        result.r = r - other.r;
-        result.g = g - other.g;
-        result.b = b - other.b;
-        result.a = a - other.a;
-        result.s = s - other.s;
-        result.t = t - other.t;
-        return result;
-    }
-
-    Vertex operator+(const Vertex& other) const {
-        Vertex result;
-        result.x = x + other.x;
-        result.y = y + other.y;
-        result.z = z + other.z;
-        result.w = w + other.w;
-        result.r = r + other.r;
-        result.g = g + other.g;
-        result.b = b + other.b;
-        result.a = a + other.a;
-        result.s = s + other.s;
-        result.t = t + other.t;
-        return result;
-    }
-
-    Vertex operator/(double div) const {
-        if (div == 0) return Vertex();
-        Vertex result;
-        result.x = x / div;
-        result.y = y / div;
-        result.z = z / div;
-        result.w = w / div;
-        result.r = r / div;
-        result.g = g / div;
-        result.b = b / div;
-        result.a = a / div;
-        result.s = s / div;
-        result.t = t / div;
-        return result;
-    }
-
-    Vertex operator*(double mul) const {
-        Vertex result;
-        result.x = x * mul;
-        result.y = y * mul;
-        result.z = z * mul;
-        result.w = w * mul;
-        result.r = r * mul;
-        result.g = g * mul;
-        result.b = b * mul;
-        result.a = a * mul;
-        result.s = s * mul;
-        result.t = t * mul;
-        return result;
-    }
-
-private:
-    double getValue(int index) const {
-        switch(index) {
-            case 0: return x;
-            case 1: return y;
-            case 2: return z;
-            case 3: return w;
-            default: return 0;
-        }
-    }
+    double s{0}, t{0};               // Texture coordinates
 };
 
-
-// Handles texture sampling:
-class Texture {
-public:
-    explicit Texture(const string& filename) : image(filename.c_str()) {}
-    // Reads a texture image from a file.
-    void sample(double s, double t, uint8_t& r, uint8_t& g, uint8_t& b, uint8_t& a) const {
-        s = fmod(s, 1.0);
-        if (s < 0) s += 1.0;
-        t = fmod(t, 1.0);
-        if (t < 0) t += 1.0;
-
-        int x = static_cast<int>(s * (image.width() - 1) + 0.5);
-        int y = static_cast<int>(t * (image.height() - 1) + 0.5);
-        
-        r = image[y][x].r;
-        g = image[y][x].g;
-        b = image[y][x].b;
-        a = image[y][x].a;
-    }
-
-private:
-    Image image;
+struct Pixel {
+    uint8_t r, g, b, a;
 };
 
-
-// Manages the image and a depth buffer:
-class RenderBuffer {
-public:
-    RenderBuffer(uint32_t width, uint32_t height)
-        : image(width, height), zbuffer(width * height, INFINITY) {}
-
-    // setPixel: Writes a pixel to the buffer while performing depth testing and alpha blending.
-    void setPixel(const Vertex& v, const Texture* texture = nullptr) {
-        int x = static_cast<int>(v.x);
-        int y = static_cast<int>(v.y);
-        
-        if (x < 0 || x >= static_cast<int>(image.width()) || 
-            y < 0 || y >= static_cast<int>(image.height())) {
-            return;
-        }
-
-        size_t index = y * image.width() + x;
-        if (useDepthTest && zbuffer[index] <= v.z) {
-            return;
-        }
-
-        double r = v.r, g = v.g, b = v.b, a = v.a;
-        if (texture) {
-            uint8_t tr, tg, tb, ta;
-            texture->sample(v.s, v.t, tr, tg, tb, ta);
-            r = tr / 255.0;
-            g = tg / 255.0;
-            b = tb / 255.0;
-            a = ta / 255.0;
-        }
-
-        if (a < 1.0) {
-            double existingA = image[y][x].a / 255.0;
-            double blendedA = a + existingA * (1 - a);
-            if (blendedA > 0) {
-                r = (r * a + (image[y][x].r / 255.0) * existingA * (1 - a)) / blendedA;
-                g = (g * a + (image[y][x].g / 255.0) * existingA * (1 - a)) / blendedA;
-                b = (b * a + (image[y][x].b / 255.0) * existingA * (1 - a)) / blendedA;
-                a = blendedA;
-            }
-        }
-
-        image[y][x].r = static_cast<uint8_t>(r * 255);
-        image[y][x].g = static_cast<uint8_t>(g * 255);
-        image[y][x].b = static_cast<uint8_t>(b * 255);
-        image[y][x].a = static_cast<uint8_t>(a * 255);
-        zbuffer[index] = v.z;
-    }
-    // Saves the rendered image to a file.
-    void save(const string& filename) const {
-        image.save(filename.c_str());
-    }
-    // Enables depth testing.
-    void enableDepthTest() { useDepthTest = true; }
-    void enablesRGB() { usesRGB = true; }
-    
-    uint32_t width() const { return image.width(); }
-    uint32_t height() const { return image.height(); }
-
-    const Image& getImage() const { return image; }
-
-private:
-    Image image;
+struct Buffer {
+    vector<Pixel> pixels;
     vector<double> zbuffer;
+    uint32_t width;
+    uint32_t height;
     bool useDepthTest{false};
     bool usesRGB{false};
 };
 
+// Vertex operations
+Vertex transformVertex(const Vertex& v, const vector<double>& matrix) {
+    Vertex result = v;
+    vector<double> transformed(4, 0.0);
+    const double values[4] = {v.x, v.y, v.z, v.w};
+    
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            transformed[i] += matrix[i * 4 + j] * values[j];
+        }
+    }
+    
+    result.x = transformed[0];
+    result.y = transformed[1];
+    result.z = transformed[2];
+    result.w = transformed[3];
+    return result;
+}
 
+Vertex normalizeVertex(const Vertex& v, int width, int height, bool enableHyp) {
+    Vertex result = v;
+    if (result.w != 0) {
+        result.x /= result.w;
+        result.y /= result.w;
+        result.z /= result.w;
+        if (enableHyp) {
+            result.r /= result.w;
+            result.g /= result.w;
+            result.b /= result.w;
+            result.a /= result.w;
+            result.s /= result.w;
+            result.t /= result.w;
+        }
+    }
+    result.x = (result.x + 1) * width / 2;
+    result.y = (result.y + 1) * height / 2;
+    return result;
+}
 
+Vertex vertexSubtract(const Vertex& a, const Vertex& b) {
+    Vertex result;
+    result.x = a.x - b.x;
+    result.y = a.y - b.y;
+    result.z = a.z - b.z;
+    result.w = a.w - b.w;
+    result.r = a.r - b.r;
+    result.g = a.g - b.g;
+    result.b = a.b - b.b;
+    result.a = a.a - b.a;
+    result.s = a.s - b.s;
+    result.t = a.t - b.t;
+    return result;
+}
 
-class Rasterizer {
-public:
-    //DDA (Digital Differential Analyzer): Draws lines between two vertices by interpolating values linearly.
-    void DDA(const Vertex& a, const Vertex& b, int axis,
+Vertex vertexAdd(const Vertex& a, const Vertex& b) {
+    Vertex result;
+    result.x = a.x + b.x;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    result.w = a.w + b.w;
+    result.r = a.r + b.r;
+    result.g = a.g + b.g;
+    result.b = a.b + b.b;
+    result.a = a.a + b.a;
+    result.s = a.s + b.s;
+    result.t = a.t + b.t;
+    return result;
+}
+
+Vertex vertexScale(const Vertex& v, double scale) {
+    Vertex result;
+    result.x = v.x * scale;
+    result.y = v.y * scale;
+    result.z = v.z * scale;
+    result.w = v.w * scale;
+    result.r = v.r * scale;
+    result.g = v.g * scale;
+    result.b = v.b * scale;
+    result.a = v.a * scale;
+    result.s = v.s * scale;
+    result.t = v.t * scale;
+    return result;
+}
+
+// Buffer operations
+Buffer createBuffer(uint32_t width, uint32_t height) {
+    Buffer buffer;
+    buffer.width = width;
+    buffer.height = height;
+    buffer.pixels.resize(width * height);
+    buffer.zbuffer.resize(width * height, INFINITY);
+    return buffer;
+}
+
+void setPixel(Buffer& buffer, const Vertex& v) {
+    int x = static_cast<int>(v.x);
+    int y = static_cast<int>(v.y);
+    
+    if (x < 0 || x >= static_cast<int>(buffer.width) || 
+        y < 0 || y >= static_cast<int>(buffer.height)) {
+        return;
+    }
+
+    size_t index = y * buffer.width + x;
+    if (buffer.useDepthTest && buffer.zbuffer[index] <= v.z) {
+        return;
+    }
+
+    double r = v.r, g = v.g, b = v.b, a = v.a;
+    
+    if (a < 1.0) {
+        Pixel& existing = buffer.pixels[index];
+        double existingA = existing.a / 255.0;
+        double blendedA = a + existingA * (1 - a);
+        
+        if (blendedA > 0) {
+            r = (r * a + (existing.r / 255.0) * existingA * (1 - a)) / blendedA;
+            g = (g * a + (existing.g / 255.0) * existingA * (1 - a)) / blendedA;
+            b = (b * a + (existing.b / 255.0) * existingA * (1 - a)) / blendedA;
+            a = blendedA;
+        }
+    }
+
+    buffer.pixels[index].r = static_cast<uint8_t>(r * 255);
+    buffer.pixels[index].g = static_cast<uint8_t>(g * 255);
+    buffer.pixels[index].b = static_cast<uint8_t>(b * 255);
+    buffer.pixels[index].a = static_cast<uint8_t>(a * 255);
+    buffer.zbuffer[index] = v.z;
+}
+
+// Rasterization functions
+void drawLine(const Vertex& start, const Vertex& end, int axis,
              const function<void(const Vertex&)>& callback) {
-        Vertex start = a;
-        Vertex end = b;
-        
-        if (axis == 0 && start.x > end.x) swap(start, end);
-        if (axis == 1 && start.y > end.y) swap(start, end);
+    Vertex a = start;
+    Vertex b = end;
+    
+    if (axis == 0 && a.x > b.x) swap(a, b);
+    if (axis == 1 && a.y > b.y) swap(a, b);
 
-        double start_val = (axis == 0) ? start.x : start.y;
-        double end_val = (axis == 0) ? end.x : end.y;
-        
-        if (start_val == end_val) return;
+    double start_val = (axis == 0) ? a.x : a.y;
+    double end_val = (axis == 0) ? b.x : b.y;
+    
+    if (start_val == end_val) return;
 
-        Vertex delta = (end - start) / (end_val - start_val);
-        
-        double curr_val = ceil(start_val);
-        Vertex curr = start + (delta * (curr_val - start_val));
+    Vertex delta = vertexScale(vertexSubtract(b, a), 1.0 / (end_val - start_val));
+    
+    double curr_val = ceil(start_val);
+    Vertex curr = vertexAdd(a, vertexScale(delta, (curr_val - start_val)));
 
-        while (curr_val < end_val) {
-            callback(curr);
-            curr = curr + delta;
-            curr_val += 1.0;
-        }
+    while (curr_val < end_val) {
+        callback(curr);
+        curr = vertexAdd(curr, delta);
+        curr_val += 1.0;
     }
-    //DDATriangle: Rasterizes a triangle by breaking it into scanlines.
-    void DDATriangle(const Vertex& p, const Vertex& q, const Vertex& r,
-                    const function<void(const Vertex&)>& callback) {
-        vector<Vertex> vertices = {p, q, r};
-        sort(vertices.begin(), vertices.end(),
-             [](const Vertex& a, const Vertex& b) { return a.y > b.y; });
-        
-        const Vertex& top = vertices[0];
-        const Vertex& mid = vertices[1];
-        const Vertex& bottom = vertices[2];
+}
 
-        vector<Vertex> tm_edges, tb_edges, mb_edges;
-        
-        DDA(top, mid, 1, [&tm_edges](const Vertex& v) { tm_edges.push_back(v); });
-        DDA(mid, bottom, 1, [&mb_edges](const Vertex& v) { mb_edges.push_back(v); });
-        DDA(top, bottom, 1, [&tb_edges](const Vertex& v) { tb_edges.push_back(v); });
+void drawTriangle(const Vertex& p, const Vertex& q, const Vertex& r,
+                 const function<void(const Vertex&)>& callback) {
+    vector<Vertex> vertices = {p, q, r};
+    sort(vertices.begin(), vertices.end(),
+         [](const Vertex& a, const Vertex& b) { return a.y > b.y; });
+    
+    vector<Vertex> tm_edges, tb_edges, mb_edges;
+    
+    drawLine(vertices[0], vertices[1], 1, 
+            [&tm_edges](const Vertex& v) { tm_edges.push_back(v); });
+    drawLine(vertices[1], vertices[2], 1, 
+            [&mb_edges](const Vertex& v) { mb_edges.push_back(v); });
+    drawLine(vertices[0], vertices[2], 1, 
+            [&tb_edges](const Vertex& v) { tb_edges.push_back(v); });
 
-        reverse(tm_edges.begin(), tm_edges.end());
-        reverse(mb_edges.begin(), mb_edges.end());
-        reverse(tb_edges.begin(), tb_edges.end());
+    reverse(tm_edges.begin(), tm_edges.end());
+    reverse(mb_edges.begin(), mb_edges.end());
+    reverse(tb_edges.begin(), tb_edges.end());
 
-        for (size_t i = 0; i < tm_edges.size(); i++) {
-            DDA(tm_edges[i], tb_edges[i], 0, callback);
-        }
-        
-        for (size_t i = 0, j = tm_edges.size(); i < mb_edges.size(); i++, j++) {
-            if (j >= tb_edges.size()) break;
-            DDA(mb_edges[i], tb_edges[j], 0, callback);
-        }
+    for (size_t i = 0; i < tm_edges.size(); i++) {
+        drawLine(tm_edges[i], tb_edges[i], 0, callback);
+    }
+    
+    for (size_t i = 0, j = tm_edges.size(); i < mb_edges.size(); i++, j++) {
+        if (j >= tb_edges.size()) break;
+        drawLine(mb_edges[i], tb_edges[j], 0, callback);
+    }
+}
+
+void renderTriangle(const Vertex& v1, const Vertex& v2, const Vertex& v3,
+                   Buffer& buffer, const vector<double>& transform,
+                   bool enableHyp) {
+    Vertex p = v1, q = v2, r = v3;
+    if (!transform.empty()) {
+        p = transformVertex(p, transform);
+        q = transformVertex(q, transform);
+        r = transformVertex(r, transform);
     }
 
-    void drawTriangle(const Vertex& v1, const Vertex& v2, const Vertex& v3,
-                     RenderBuffer& buffer, const vector<double>& transform,
-                     bool enableHyp, const Texture* texture = nullptr) {
-        Vertex p = v1, q = v2, r = v3;
-        if (!transform.empty()) {
-            p.transform(transform);
-            q.transform(transform);
-            r.transform(transform);
-        }
+    p = normalizeVertex(p, buffer.width, buffer.height, enableHyp);
+    q = normalizeVertex(q, buffer.width, buffer.height, enableHyp);
+    r = normalizeVertex(r, buffer.width, buffer.height, enableHyp);
 
-        p = p.normalized(buffer.width(), buffer.height(), enableHyp);
-        q = q.normalized(buffer.width(), buffer.height(), enableHyp);
-        r = r.normalized(buffer.width(), buffer.height(), enableHyp);
+    drawTriangle(p, q, r, [&buffer](const Vertex& v) {
+        setPixel(buffer, v);
+    });
+}
 
-        DDATriangle(p, q, r, [&buffer, texture](const Vertex& v) {
-            buffer.setPixel(v, texture);
-        });
-    }
-};
-
-void parseInputFile(const char* filename, Image& img) {
+// File parsing and main rendering function
+void parseAndRender(const char* filename, Image& img) {
     ifstream file(filename);
     string line;
     
     vector<Vertex> vertices;
     vector<array<double, 3>> colors;
-    RenderBuffer buffer(img.width(), img.height());
-    Rasterizer rasterizer;
+    Buffer buffer = createBuffer(img.width(), img.height());
     vector<double> currentTransform;
     
     while (getline(file, line)) {
@@ -356,7 +292,7 @@ void parseInputFile(const char* filename, Image& img) {
             
             for (int i = start; i < start + count - 2; i += 3) {
                 if (i + 2 < vertices.size()) {
-                    rasterizer.drawTriangle(
+                    renderTriangle(
                         vertices[i],
                         vertices[i + 1],
                         vertices[i + 2],
@@ -369,9 +305,14 @@ void parseInputFile(const char* filename, Image& img) {
         }
     }
     
-    for (uint32_t y = 0; y < buffer.height(); y++) {
-        for (uint32_t x = 0; x < buffer.width(); x++) {
-            img[y][x] = buffer.getImage()[y][x];
+    // Copy buffer to image
+    for (uint32_t y = 0; y < buffer.height; y++) {
+        for (uint32_t x = 0; x < buffer.width; x++) {
+            size_t index = y * buffer.width + x;
+            img[y][x].r = buffer.pixels[index].r;
+            img[y][x].g = buffer.pixels[index].g;
+            img[y][x].b = buffer.pixels[index].b;
+            img[y][x].a = buffer.pixels[index].a;
         }
     }
 }
@@ -408,7 +349,7 @@ int main(int argc, char* argv[]) {
     Image img(width, height);
     cout << "Creating image: " << width << " x " << height << " -> " << outputFilename << endl;
     
-    parseInputFile(argv[1], img);
+    parseAndRender(argv[1], img);
     img.save(outputFilename.c_str());
 
     return 0;
