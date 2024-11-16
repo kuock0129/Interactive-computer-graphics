@@ -111,6 +111,7 @@ void free_image(image_t *img);
  */
 class Image {
 public:
+    pixel_t* operator[](uint32_t y) const { return &(data->rgba[data->width * y]); }
     /// Create a blank (transparent black) image of the given size
     Image(uint32_t width, uint32_t height) : data(new_image(width, height)) {}
     /**
