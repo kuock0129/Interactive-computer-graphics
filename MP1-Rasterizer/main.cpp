@@ -13,6 +13,7 @@
 using namespace std;
 
 int width, height;
+vector<int> elements;
 string outputFilename;
 
 class Vertex {
@@ -38,20 +39,32 @@ public:
     Vertex normalized(int width, int height, bool enableHyp) const {
         Vertex result = *this;
         if (w != 0) {
+            // Normalize position components.
             result.x /= w;
             result.y /= w;
             result.z /= w;
-            // if (enableHyp) {
-            //     result.r /= w;
-            //     result.g /= w;
-            //     result.b /= w;
-            //     result.a /= w;
-            //     result.s /= w;
-            //     result.t /= w;
-            // }
+
+            // Store 1.0 / w for later interpolation use.
+            result.w = 1.0 / w;
+
+            // Optionally normalize additional attributes.
+            if (enableHyp) {
+                // result.r /= w;
+                // result.g /= w;
+                // result.b /= w;
+                // result.a /= w;
+                result.s /= w;
+                result.t /= w;
+            }
+
+            // Map x and y to screen space.
+            result.x = (result.x + 1) * width / 2;
+            result.y = (result.y + 1) * height / 2;
+        } else {
+            // Handle w == 0 case explicitly if needed (e.g., set to default or invalid state).
+            result = Vertex(); // Reset or handle invalid case appropriately.
         }
-        result.x = (result.x + 1) * width / 2;
-        result.y = (result.y + 1) * height / 2;
+
         return result;
     }
 
@@ -159,7 +172,8 @@ private:
 class RenderBuffer {
 public:
     RenderBuffer(uint32_t width, uint32_t height)
-        : image(width, height), zbuffer(width * height, INFINITY) {}
+        : image(width, height), zbuffer(width * height, INFINITY), minDepth(0.0), maxDepth(1.0) {}
+
 
     // setPixel: Writes a pixel to the buffer while performing depth testing and alpha blending.
     void setPixel(const Vertex& v, const Texture* texture = nullptr) {
@@ -178,14 +192,14 @@ public:
         }
 
         double r = v.r, g = v.g, b = v.b, a = v.a;
-        // if (texture) {
-        //     uint8_t tr, tg, tb, ta;
-        //     texture->sample(v.s, v.t, tr, tg, tb, ta);
-        //     r = tr / 255.0;
-        //     g = tg / 255.0;
-        //     b = tb / 255.0;
-        //     a = ta / 255.0;
-        // }
+        if (texture) {
+            uint8_t tr, tg, tb, ta;
+            texture->sample(v.s, v.t, tr, tg, tb, ta);
+            r = tr / 255.0;
+            g = tg / 255.0;
+            b = tb / 255.0;
+            a = ta / 255.0;
+        }
 
         if (a < 1.0) {
             // cout << "Alpha blending: " << r << " " << g << " " << b << " " << a << endl;
@@ -204,6 +218,30 @@ public:
         image[y][x].b = static_cast<uint8_t>(b * 255);
         image[y][x].a = static_cast<uint8_t>(a * 255);
         zbuffer[index] = v.z;
+
+        // // Normalize the depth value to [0, 1]
+        // double normalizedDepth = (v.z - minDepth) / (maxDepth - minDepth);
+        // normalizedDepth = std::max(0.0, std::min(1.0, normalizedDepth)); // Clamp to [0, 1]
+
+        // // Map the normalized depth to a grayscale color
+        // uint8_t gray = static_cast<uint8_t>(normalizedDepth * 255);
+
+        // image[y][x].r = gray;
+        // image[y][x].g = gray;
+        // image[y][x].b = gray;
+        // image[y][x].a = 255; // Fully opaque
+        // zbuffer[index] = v.z;
+    }
+
+    // Helper function to convert linear RGB to sRGB
+    float linearToSrgb(float value) {
+        value = value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+
+        if (value <= 0.0031308f) {
+            return 12.92f * value;
+        } else {
+            return 1.055f * pow(value, 1.0f / 2.4f) - 0.055f;
+        }
     }
 
     // Saves the rendered image to a file.
@@ -224,6 +262,8 @@ private:
     vector<double> zbuffer;
     bool useDepthTest{false};
     bool usesRGB{false};
+    double minDepth;
+    double maxDepth;
 };
 
 
@@ -322,8 +362,6 @@ public:
 
 
 
-
-
 void parseInputFile(const char* filename, Image& img) {
     ifstream file(filename);
     string line;
@@ -334,6 +372,11 @@ void parseInputFile(const char* filename, Image& img) {
     RenderBuffer buffer(img.width(), img.height());
     Rasterizer rasterizer;
     vector<double> currentTransform;
+
+    // flag to apply sRGB conversion to all colors
+    bool usesRGB = false;
+
+    bool useHYP = false;
     
     while (getline(file, line)) {
         if (line.empty() || line[0] == '#') continue;
@@ -341,8 +384,20 @@ void parseInputFile(const char* filename, Image& img) {
         istringstream iss(line);
         string command;
         iss >> command;
-        
-        if (command == "position") {
+
+
+        if (command == "depth") {
+            buffer.enableDepthTest();
+            // depthBuffer.resize(height, vector<float>(width, numeric_limits<float>::infinity()));
+        }
+        else if(command == "sRGB") {
+            usesRGB = true;
+        }
+        else if(command == "hyp") {
+            useHYP = true;
+        }
+
+        else if (command == "position") {
             positions.clear();
             int size;
             iss >> size;
@@ -393,6 +448,13 @@ void parseInputFile(const char* filename, Image& img) {
                 if (size == 4) {
                     iss >> color[3]; // Read A if size is 4
                 }
+
+                if (usesRGB) {
+                    color[0] = buffer.linearToSrgb(color[0]);
+                    color[1] = buffer.linearToSrgb(color[1]);
+                    color[2] = buffer.linearToSrgb(color[2]);
+                    cout << "Converted color to sRGB: " << color[0] << " " << color[1] << " " << color[2] << endl;
+                }
                 
                 // Only add the color if sufficient values were successfully read
                 if (iss) {
@@ -413,11 +475,23 @@ void parseInputFile(const char* filename, Image& img) {
             // }
             
         }
+        else if (command == "elements") {
+            elements.clear();  // Clear existing elements
+            int index;
+            while (iss >> index) {
+                elements.push_back(index);
+            }
+            cout << "Parsed " << elements.size() << " elements" << endl;
+            // for (int i = 0; i < elements.size(); i++) {
+            //     cout << elements[i] << " ";
+            // }
+            cout << endl;
+        }
         else if (command == "drawArraysTriangles") {
             int start, count;
             iss >> start >> count;
 
-            // Combine vertices before creating indices
+            //START// Combine vertices before creating indices
             vertices.clear();  // Clear previous vertices
             size_t vertexCount = max(positions.size(), colors.size());
             vertices.resize(vertexCount);
@@ -435,7 +509,7 @@ void parseInputFile(const char* filename, Image& img) {
                 vertices[i].w = positions[i][3];
                 cout << "Position: " << vertices[i].x << " " << vertices[i].y << " " << vertices[i].z << " " << vertices[i].w << endl;
             }
-            
+            ///END // Combine vertices before creating indices
             
             for (int i = start; i < start + count - 2; i += 3) {
                 if (i + 2 < vertices.size()) {
@@ -452,8 +526,61 @@ void parseInputFile(const char* filename, Image& img) {
                         vertices[i + 2],
                         buffer,
                         currentTransform,
-                        true
+                        useHYP
                     );
+                }
+            }
+        }
+        else if (command == "drawElementsTriangles") {
+            int count, offset;
+            iss >> count >> offset;
+
+            // Clear previous vertices
+            vertices.clear();
+            size_t vertexCount = max(positions.size(), colors.size());
+            vertices.resize(vertexCount);
+
+            // Populate vertices with position and color
+            for (size_t i = 0; i < colors.size(); i++) {
+                vertices[i].r = colors[i][0];
+                vertices[i].g = colors[i][1];
+                vertices[i].b = colors[i][2];
+                vertices[i].a = colors[i][3];
+            }
+            for (size_t i = 0; i < positions.size(); i++) {
+                vertices[i].x = positions[i][0];
+                vertices[i].y = positions[i][1];
+                vertices[i].z = positions[i][2];
+                vertices[i].w = positions[i][3];
+            }
+
+            // Draw triangles based on `elements` array
+            for (int i = 0; i < count; i += 3) {
+                int index1 = elements[offset + i];
+                int index2 = elements[offset + i + 1];
+                int index3 = elements[offset + i + 2];
+
+                if (index1 < vertices.size() && index2 < vertices.size() && index3 < vertices.size()) {
+                    // Log the triangle vertices
+                    cout << "Triangle vertices: " << endl;
+                    cout << "  Vertex 1: " << vertices[index1].x << " " << vertices[index1].y << " " << vertices[index1].z << " " << vertices[index1].w
+                        << " " << vertices[index1].r << " " << vertices[index1].g << " " << vertices[index1].b << " " << vertices[index1].a << endl;
+                    cout << "  Vertex 2: " << vertices[index2].x << " " << vertices[index2].y << " " << vertices[index2].z << " " << vertices[index2].w
+                        << " " << vertices[index2].r << " " << vertices[index2].g << " " << vertices[index2].b << " " << vertices[index2].a << endl;
+                    cout << "  Vertex 3: " << vertices[index3].x << " " << vertices[index3].y << " " << vertices[index3].z << " " << vertices[index3].w
+                        << " " << vertices[index3].r << " " << vertices[index3].g << " " << vertices[index3].b << " " << vertices[index3].a << endl;
+
+                    // Draw the triangle
+                    rasterizer.drawTriangle(
+                        vertices[index1],
+                        vertices[index2],
+                        vertices[index3],
+                        buffer,
+                        currentTransform,
+                        useHYP
+                    );
+                } else {
+                    cout << "Warning: Invalid index in elements array" << endl;
                 }
             }
         }
