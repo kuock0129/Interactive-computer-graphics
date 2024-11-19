@@ -1,11 +1,12 @@
 #version 300 es
 precision highp float;
 
+in vec4 vColor;
+
 uniform float seconds;
 
-in vec4 verColor;
 out vec4 fragColor;
 
 void main() {
-    fragColor = verColor;
+    fragColor = vColor;
 }

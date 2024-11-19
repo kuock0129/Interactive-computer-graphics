@@ -5,12 +5,12 @@ layout(location=1) in vec4 color;
 
 uniform float seconds;
 
-out vec4 verColor;
+out vec4 vColor;
 
 void main() {
-    verColor = color;
+    vColor = color;
 
-    float ratio = 0.04 + 0.02 * sin(seconds * 0.6);
+    float ratio = 0.02 + 0.01 * sin(seconds * 0.6);
     mat4 scale = mat4(
         ratio, 0, 0, 0,
         0, ratio, 0, 0,
@@ -18,17 +18,16 @@ void main() {
         0, 0, 0, 1
     );
 
-    float c = cos(seconds*0.6);
-    float s = sin(seconds*0.6);
-    mat4 rotation = mat4(
+    float c = cos(seconds*0.8);
+    float s = sin(seconds*0.8);
+    mat4 rot = mat4(
         c, -s, 0, 0,
         s, c, 0, 0,
         0, 0, 1, 0,
         0, 0, 0, 1
     );
-
-    float dx = 0.1 * sin(seconds * 1.1), dy = 0.1 * cos(seconds * 1.9);
+    float dx = 0.1 * sin(seconds * 1.1), dy = 0.1 * cos(seconds * 2.2);
     vec4 displacement = vec4(dx, dy, 0, 0);
 
-    gl_Position = (rotation * scale * position) + displacement;
+    gl_Position = (rot * scale * position) + displacement;
 }
