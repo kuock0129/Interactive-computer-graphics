@@ -160,14 +160,20 @@ function createFault(positions) {
     let p = [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0] // [-1, 1]
     let theta = 2.0 * Math.PI * Math.random();
     let norm = [Math.cos(theta), Math.sin(theta), 0]
-    const DELTA_HEIGHT = 1
+    const R = 1.5
     for (let i = 0; i < positions.length; i += 1) {
         // positions[i][2] = Math.random() / 10.0
         let product = dot(sub(positions[i], p), norm)
+        if (Math.abs(product) >= R) {
+            continue;
+        }
+        const coefficient = Math.pow(1 - Math.pow(product / R, 2), 2)
+
+
         if (product > 0) {
-            positions[i][2] += DELTA_HEIGHT;
+            positions[i][2] += coefficient ;
         } else {
-            positions[i][2] -= DELTA_HEIGHT;
+            positions[i][2] -= coefficient ;
         }
     }
 }
@@ -284,7 +290,7 @@ window.addEventListener('load', async (event) => {
 
     // // by default generate a 50x50 grid and 50 faults
     // generateTerrain(50, 50)
-    
+
     // initial
     const gridSize = Number(document.querySelector('#gridsize').value) || 2
     const faults = Number(document.querySelector('#faults').value) || 0
