@@ -282,9 +282,13 @@ window.addEventListener('load', async (event) => {
         const faults = Number(document.querySelector('#faults').value) || 0
         // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
         if (gridSize < 2) {
-            // console.log("grid size should be greater than 1")
+            console.error("grid size should be greater than 1")
             return
         }
+        if (faults < 0) {
+            console.error("fault should be non-negative")
+            return 
+         }
         generateTerrain(gridSize, faults)
     })
 
