@@ -254,8 +254,8 @@ function generateTerrain(gridSize, faults) {
     // get geometry
     const terrain = makeGeom(gridSize, faults)
     window.geom = setupGeomery(terrain)
-    // render
-    requestAnimationFrame(tick)
+    // // render
+    // requestAnimationFrame(tick)
 }
 
 
@@ -295,4 +295,7 @@ window.addEventListener('load', async (event) => {
     const gridSize = Number(document.querySelector('#gridsize').value) || 2
     const faults = Number(document.querySelector('#faults').value) || 0
     generateTerrain(gridSize, faults)
+    
+    // render
+    requestAnimationFrame(tick)
 })
