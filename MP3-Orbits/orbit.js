@@ -198,52 +198,54 @@ const CelestialBodyConfig = {
     EARTH: {
         type: 'OCTAHEDRON',
         scale: 0.5,
-        rotationPeriod: 3.0, // seconds
+        rotationPeriod: 2.5,  // 自轉
         orbitConfig: {
             distance: 3.5,
             inclinationDegrees: 23.5,
-            revolutionPeriod: 10.0, // seconds
+            revolutionPeriod: 10.0,  // 公轉
         }
     },
     MOON: {
         type: 'TETRAHEDRON',
         scale: 0.1,
-        rotationPeriod: 3.0,
+        rotationPeriod: 2.5, // Should match revolutionPeriod for tidal locking
         orbitConfig: {
             distance: 0.7,
             inclinationDegrees: 0,
-            revolutionPeriod: 3.0, // Same as rotation for tidal locking
+            revolutionPeriod: 2.5, // 公轉 // Between Earth's spin (1s) and orbit (10s)
         }
     },
+    
+
     MARS: {
         type: 'OCTAHEDRON',
-        scale: 0.4,
-        rotationPeriod: 2.2,
+        scale: 0.2,
+        rotationPeriod: 5.5, // 自轉. // 2.2 times slower than Earth 2.2*2.5 
         orbitConfig: {
             distance: 5.6, // 3.5 * 1.6
             inclinationDegrees: 25,
-            revolutionPeriod: 19.0, // 10 * 1.9
-            rotationZDegrees: 60, // Additional rotation to prevent parallel axis
+            revolutionPeriod: 19.0, // 公轉. // 10 * 1.9
+            rotationZDegrees: 60,
         }
     },
     PHOBOS: {
         type: 'TETRAHEDRON',
         scale: 0.06,
-        rotationPeriod: 1.0,
+        rotationPeriod: 1.1, // Should match revolutionPeriod for tidal locking
         orbitConfig: {
             distance: 0.5,
             inclinationDegrees: 0,
-            revolutionPeriod: 1.0, // Tidal locked
+            revolutionPeriod: 1.1,  // 公轉  // Faster than Mars's spin (2.2s)
         }
     },
     DEIMOS: {
         type: 'TETRAHEDRON',
         scale: 0.03,
-        rotationPeriod: 2.3,
+        rotationPeriod: 2.2, // Should match revolutionPeriod for tidal locking
         orbitConfig: {
-            distance: 1.0,
+            distance: 1.0, // Twice Phobos's distance
             inclinationDegrees: 0,
-            revolutionPeriod: 2.3, // Tidal locked
+            revolutionPeriod: 2.2, // Slightly faster than Mars's spin (2.2s)
         }
     }
 };
