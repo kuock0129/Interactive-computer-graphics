@@ -150,6 +150,10 @@ function fillScreen() {
 
 
 
+
+
+
+
 function createFault(positions) {
     // TODO: create faults
     // create random p
@@ -233,9 +237,12 @@ function makeGeom(gridSize, faults) {
         g.attributes[1].push(normal)
     }
 
-
     return g
 }
+
+
+
+
 /** generate geom and render on screen */
 function generateTerrain(gridSize, faults) {
     // get geometry
@@ -275,5 +282,11 @@ window.addEventListener('load', async (event) => {
         generateTerrain(gridSize, faults)
     })
 
-    generateTerrain(50, 50)
+    // // by default generate a 50x50 grid and 50 faults
+    // generateTerrain(50, 50)
+    
+    // initial
+    const gridSize = Number(document.querySelector('#gridsize').value) || 2
+    const faults = Number(document.querySelector('#faults').value) || 0
+    generateTerrain(gridSize, faults)
 })
