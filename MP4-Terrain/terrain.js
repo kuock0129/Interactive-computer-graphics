@@ -152,8 +152,19 @@ function fillScreen() {
 
 function createFault(positions) {
     // TODO: create faults
+    // create random p
+    let p = [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0] // [-1, 1]
+    let theta = 2.0 * Math.PI * Math.random();
+    let norm = [Math.cos(theta), Math.sin(theta), 0]
+    const DELTA_HEIGHT = 1
     for (let i = 0; i < positions.length; i += 1) {
-        positions[i][2] = Math.random() / 10.0
+        // positions[i][2] = Math.random() / 10.0
+        let product = dot(sub(positions[i], p), norm)
+        if (product > 0) {
+            positions[i][2] += DELTA_HEIGHT;
+        } else {
+            positions[i][2] -= DELTA_HEIGHT;
+        }
     }
 }
 
@@ -189,7 +200,7 @@ function makeGeom(gridSize, faults) {
     // normalize height
     let maxHeight = Math.max(...g.attributes[0].map(pos => pos[2]))
     let minHeight = Math.min(...g.attributes[0].map(pos => pos[2]))
-    const PEAK_HEIGHT = 0.3
+    const PEAK_HEIGHT = 0.8
     g.attributes[0].forEach(pos => {
         if (maxHeight !== minHeight) {
             pos[2] = PEAK_HEIGHT * (pos[2] - (maxHeight + minHeight) / 2) / (maxHeight - minHeight)
