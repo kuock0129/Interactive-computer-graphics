@@ -16,7 +16,6 @@ function fillScreen() {
     // TO DO: compute a new projection matrix based on the width/height aspect ratio
 }
 
-window.addEventListener('resize',fillscreen)
 /**
  * Given the source code of a vertex and fragment shader, compiles them,
  * and returns the linked program.
@@ -195,8 +194,8 @@ window.addEventListener('load', async (event) => {
     // optional configuration object: see https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext
     {antialias: false, depth:true, preserveDrawingBuffer:true}
     )
-    let vs = await fetch('vs.glsl').then(res => res.text())
-    let fs = await fetch('fs.glsl').then(res => res.text())
+    let vs = await fetch('vertexShader.glsl').then(res => res.text())
+    let fs = await fetch('fragmentShader.glsl').then(res => res.text())
     window.program = compileShader(vs,fs)
     gl.enable(gl.DEPTH_TEST)
     fillScreen()
