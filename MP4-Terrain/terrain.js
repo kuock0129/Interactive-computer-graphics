@@ -1,13 +1,6 @@
-/** constants */
-const IlliniBlue = new Float32Array([0.075, 0.16, 0.292, 1])
-const IlliniOrange = new Float32Array([1, 0.373, 0.02, 1])
-const IdentityMatrix = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1])
+const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
 
 
-/**
- * Given the source code of a vertex and fragment shader, compiles them,
- * and returns the linked program.
- */
 function compileShader(vs_source, fs_source) {
     const vs = gl.createShader(gl.VERTEX_SHADER)
     gl.shaderSource(vs, vs_source)
@@ -102,20 +95,31 @@ function setupGeomery(geom) {
 }
 /** Draw one frame */
 function draw(seconds) {
-    gl.clearColor(...IlliniBlue) // f(...[1,2,3]) means f(1,2,3)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     gl.useProgram(program)
     gl.bindVertexArray(geom.vao)
-    gl.uniform4fv(program.uniforms.color, IlliniOrange)
+    // gl.uniform4fv(program.uniforms.color, IlliniOrange)
     // let m = m4rotX(seconds)
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
-    let m = m4rotZ(seconds) // rotating camera
-    let v = m4view([1.3, 0.8, 0.8], [0,0,0], [0,0,1])
+
+    gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
+    const eyePosition = [1.3, 0.8, 0.8]
+    // light
+    let ld = normalize([1,1,2])
+    gl.uniform3fv(program.uniforms.lightdir, ld)
+    gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
+    gl.uniform3fv(program.uniforms.eye, eyePosition)
+    let m = m4rotZ(0.2 * seconds) // rotating camera
+    let v = m4view(eyePosition, [0,0,0], [0,0,1])
+
+
     gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
     gl.uniformMatrix4fv(program.uniforms.p, false, p)
     
     gl.drawElements(geom.mode, geom.count, geom.type, 0)
 }
+
+
 /** Compute any time-varying or animated aspects of the scene */
 function tick(milliseconds) {
     let seconds = milliseconds / 1000;
@@ -125,21 +129,6 @@ function tick(milliseconds) {
 
 
 
-// /** Resizes the canvas to completely fill the screen */
-// function fillScreen() {
-//     let canvas = document.querySelector('canvas')
-//     document.body.style.margin = '0'
-//     canvas.style.width = '100vw'
-//     canvas.style.height = '100vh'
-//     canvas.width = canvas.clientWidth
-//     canvas.height = canvas.clientHeight
-//     canvas.style.width = ''
-//     canvas.style.height = ''
-//     if (window.gl) {
-//         gl.viewport(0,0, canvas.width, canvas.height)
-//         window.p = m4perspNegZ(0.1, 32, 1.5, canvas.width, canvas.height)
-//     }
-// }
 
 /** Resizes the canvas to completely fill the screen */
 function fillScreen() {
@@ -154,9 +143,25 @@ function fillScreen() {
     if (window.gl) {
         gl.viewport(0,0, canvas.width, canvas.height)
         // window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
-        window.p = m4perspNegZ(0.1, 10, 1, canvas.width, canvas.height)
+        // window.p = m4perspNegZ(0.1, 10, 1, canvas.width, canvas.height)
+        window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
     }
 }
+
+
+
+function createFault(positions) {
+    // TODO: create faults
+    for (let i = 0; i < positions.length; i += 1) {
+        positions[i][2] = Math.random() / 10.0
+    }
+}
+
+
+
+
+
+
 /** make terrain based on gridSize and faults */
 function makeGeom(gridSize, faults) {
     g = {"triangles":
@@ -164,8 +169,8 @@ function makeGeom(gridSize, faults) {
     ,"attributes":
         [ // position
             []
-        // , // color
-        //     []
+            , // normal
+            []
         ]
     }
     // create grid
@@ -176,6 +181,22 @@ function makeGeom(gridSize, faults) {
             g.attributes[0].push([-1.0 + d * i, -1.0 + d * j, 0])
         }
     }
+
+    // create fault
+    for (let i = 0; i < faults; i += 1) {
+        createFault(g.attributes[0])
+    }
+    // normalize height
+    let maxHeight = Math.max(...g.attributes[0].map(pos => pos[2]))
+    let minHeight = Math.min(...g.attributes[0].map(pos => pos[2]))
+    const PEAK_HEIGHT = 0.3
+    g.attributes[0].forEach(pos => {
+        if (maxHeight !== minHeight) {
+            pos[2] = PEAK_HEIGHT * (pos[2] - (maxHeight + minHeight) / 2) / (maxHeight - minHeight)
+        }
+    })
+
+
     // create triangles
     for (let i = 0; i < gridSize - 1; i += 1) {
         for (let j = 0; j < gridSize - 1; j += 1) {
@@ -188,6 +209,20 @@ function makeGeom(gridSize, faults) {
             ])
         }
     }
+
+    // add normals
+    for (let i = 0; i < g.attributes[0].length; i += 1) {
+        let row = Math.floor(i / gridSize)
+        let col = i % gridSize
+        let n = (row > 0) ? g.attributes[0][i - gridSize] : g.attributes[0][i];
+        let s = (row < gridSize - 1) ? g.attributes[0][i + gridSize] : g.attributes[0][i];
+        let w = (col > 0) ? g.attributes[0][i - 1] : g.attributes[0][i];
+        let e = (col < gridSize - 1) ? g.attributes[0][i + 1] : g.attributes[0][i];
+        let normal = cross(sub(n, s), sub(w, e))
+        g.attributes[1].push(normal)
+    }
+
+
     return g
 }
 /** generate geom and render on screen */
@@ -198,6 +233,8 @@ function generateTerrain(gridSize, faults) {
     // render
     requestAnimationFrame(tick)
 }
+
+
 
 
 /** Compile, link, set up geometry */
@@ -212,6 +249,8 @@ window.addEventListener('load', async (event) => {
     let fs = await fetch('fragmentShader.glsl').then(res => res.text())
     window.program = compileShader(vs,fs)
     gl.enable(gl.DEPTH_TEST)
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     fillScreen()
     window.addEventListener('resize', fillScreen)
     document.querySelector('#submit').addEventListener('click', event => {
@@ -219,7 +258,7 @@ window.addEventListener('load', async (event) => {
         const faults = Number(document.querySelector('#faults').value) || 0
         // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
         if (gridSize < 2) {
-            console.log("grid size should be greater than 1")
+            // console.log("grid size should be greater than 1")
             return
         }
         generateTerrain(gridSize, faults)
