@@ -1,4 +1,5 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
+var animationStarted = false
 
 
 function compileShader(vs_source, fs_source) {
@@ -256,6 +257,10 @@ function generateTerrain(gridSize, faults) {
     window.geom = setupGeomery(terrain)
     // // render
     // requestAnimationFrame(tick)
+    if (!animationStarted) {
+        animationStarted = true
+        requestAnimationFrame(tick)
+    }
 }
 
 
@@ -295,11 +300,11 @@ window.addEventListener('load', async (event) => {
     // // by default generate a 50x50 grid and 50 faults
     // generateTerrain(50, 50)
 
-    // initial
-    const gridSize = Number(document.querySelector('#gridsize').value) || 2
-    const faults = Number(document.querySelector('#faults').value) || 0
-    generateTerrain(gridSize, faults)
+    // // initial
+    // const gridSize = Number(document.querySelector('#gridsize').value) || 2
+    // const faults = Number(document.querySelector('#faults').value) || 0
+    // generateTerrain(gridSize, faults)
     
-    // render
-    requestAnimationFrame(tick)
+    // // render
+    // requestAnimationFrame(tick)
 })
