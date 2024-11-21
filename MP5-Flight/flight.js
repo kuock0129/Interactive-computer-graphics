@@ -1,4 +1,9 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
+const UPWARD = new Float32Array([0,0,1])
+var eyePosition = [1.3, 0.8, 0.7]
+var prevSecond = 0
+
+
 
 /**
  * Given the source code of a vertex and fragment shader, compiles them,
@@ -97,7 +102,7 @@ function setupGeomery(geom) {
     }
 }
 /** Draw one frame */
-function draw(seconds) {
+function draw() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     gl.useProgram(program)
     gl.bindVertexArray(geom.vao)
@@ -106,27 +111,83 @@ function draw(seconds) {
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
     gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
-    const eyePosition = [1.3, 0.8, 0.8]
+    // const eyePosition = [1.3, 0.8, 0.8]
     // light
     let ld = normalize([1,1,2])
     gl.uniform3fv(program.uniforms.lightdir, ld)
     gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
     gl.uniform3fv(program.uniforms.eye, eyePosition)
-    let m = m4rotZ(0.2 * seconds) // rotating camera
-    let v = m4view(eyePosition, [0,0,0], [0,0,1])
+    // let m = m4rotZ(0.2 * seconds) // rotating camera
+    // let v = m4view(eyePosition, [0,0,0], [0,0,1])
+    let v = m4viewF(eyePosition, forward, UPWARD)
 
 
-    gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
+    gl.uniformMatrix4fv(program.uniforms.mv, false, v)
     gl.uniformMatrix4fv(program.uniforms.p, false, p)
     
     gl.drawElements(geom.mode, geom.count, geom.type, 0)
 }
 
 
+function controlCameraMovement(seconds, prevSecond, eyePosition, forward) {
+    const right = cross(forward, UPWARD);
+    const FORWARD_SPEED = 0.25;
+    const SIDE_SPEED = 0.25;
+    const ROTATE_SPEED = 0.5;
+    const deltaTime = seconds - prevSecond;
+
+    let newEyePosition = [...eyePosition];
+    let newForward = [...forward];
+
+    // move forward/backward
+    if (keysBeingPressed['w']) {
+        newEyePosition = add(newEyePosition, mul(forward, FORWARD_SPEED * deltaTime));
+    } else if (keysBeingPressed['s']) {
+        newEyePosition = sub(newEyePosition, mul(forward, FORWARD_SPEED * deltaTime));
+    }
+
+    // move right/left
+    if (keysBeingPressed['a']) {
+        newEyePosition = sub(newEyePosition, mul(right, SIDE_SPEED * deltaTime));
+    } else if (keysBeingPressed['d']) {
+        newEyePosition = add(newEyePosition, mul(right, SIDE_SPEED * deltaTime));
+    }
+
+    // rotate around right (pitch)
+    if (keysBeingPressed['ArrowUp']) {
+        newForward = m3mul(m3rotAxis(right, ROTATE_SPEED * deltaTime), newForward);
+    } else if (keysBeingPressed['ArrowDown']) {
+        newForward = m3mul(m3rotAxis(right, -ROTATE_SPEED * deltaTime), newForward);
+    }
+
+    // rotate around UPWARD (yaw)
+    if (keysBeingPressed['ArrowLeft']) {
+        newForward = m3mul(m3rotAxis(UPWARD, ROTATE_SPEED * deltaTime), newForward);
+    } else if (keysBeingPressed['ArrowRight']) {
+        newForward = m3mul(m3rotAxis(UPWARD, -ROTATE_SPEED * deltaTime), newForward);
+    }
+
+    return {
+        eyePosition: newEyePosition,
+        forward: newForward,
+        prevSecond: seconds
+    };
+}
+
+
+
+
 /** Compute any time-varying or animated aspects of the scene */
 function tick(milliseconds) {
     let seconds = milliseconds / 1000;
-    draw(seconds)
+    const cameraState = controlCameraMovement(seconds, prevSecond, eyePosition, forward);
+    
+    eyePosition = cameraState.eyePosition;
+    forward = cameraState.forward;
+    prevSecond = cameraState.prevSecond;
+
+
+    draw()
     requestAnimationFrame(tick)
 }
 
@@ -269,7 +330,9 @@ window.addEventListener('load', async (event) => {
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     fillScreen()
-    window.addEventListener('resize', fillScreen)
+    window.keysBeingPressed = {}
+    window.addEventListener('keydown', event => keysBeingPressed[event.key] = true)
+    window.addEventListener('keyup', event => keysBeingPressed[event.key] = false)
     const gridSize = 80, faults = 80
     generateTerrain(gridSize, faults)
 })

@@ -79,10 +79,27 @@ const m3rotY = (ang) => { // around y axis
   let c = Math.cos(ang), s = Math.sin(ang);
   return new Float32Array([c,0,-s, 0,1,0, s,0,c]);
 }
+
 const m3rotZ = (ang) => { // around z axis
   let c = Math.cos(ang), s = Math.sin(ang);
   return new Float32Array([c,s,0, -s,c,0, 0,0,1]);
 }
+
+const m3rotAxis = (axis, ang) => { // rotate around given axis
+  // 1. Normalize the rotation axis to ensure it's a unit vector
+  let [ux,uy,uz] = normalize(axis)
+   // 2. Precompute trigonometric values for the rotation angle
+  let c = Math.cos(ang), s = Math.sin(ang)
+  
+  let xx = ux*ux, xy = ux*uy, xz = ux*uz
+  let yy = uy*uy, yz = uy*uz, zz = uz*uz
+  return new Float32Array([
+      c+xx*(1-c), xy*(1-c)+uz*s, xz*(1-c)-uy*s,
+      xy*(1-c)-uz*s, c+yy*(1-c), yz*(1-c)+ux*s,
+      xz*(1-c)+uy*s, yz*(1-c)-ux*s, c+zz*(1-c)
+  ])
+}
+
 const m3fixAxes = (f, up) => { // f to -z, up to near +y
   f = normalize(f)
   let r = normalize(cross(f,up))
