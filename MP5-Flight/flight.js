@@ -1,12 +1,39 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
 const UPWARD = new Float32Array([0,0,1])
 const gridSize = 80, faults = 80
+const DRIVE_HEIGHT = 0.05
+
 // global variables
-var eyePosition = [1.3, 0.8, 0.7]
+// var eyePosition = [1.3, 0.8, 0.7]
 var prevSecond = 0
-var forward = normalize(mul(eyePosition, -1))
+var eyePosition = [0, 0, 1]
+var forward = normalize([1, 0, 0])
 
 const m4viewF = (eye, forward, up) => m4mul(m4fixAxes(forward, up), m4trans(-eye[0],-eye[1],-eye[2]))
+
+
+/** util function */
+const clamp = (val, lb, ub) => Math.min(ub, Math.max(lb, val))
+
+function moveCameraPosition() {
+    let [x, y, z] = eyePosition
+    x = clamp(x, -1.0, 1.0)
+    y = clamp(y, -1.0, 1.0)
+    let posx = gridSize * (x + 1.0) / 2.0
+    let posy = gridSize * (y + 1.0) / 2.0
+    let row = Math.floor(posx)
+    let col = Math.floor(posy)
+    let n = window.terrain.attributes[0].length
+    let idx = row * gridSize + col
+
+    let p00 = (idx < n) ? window.terrain.attributes[0][idx][2] : window.terrain.attributes[0][n-1][2] // just in case
+    let p01 = (idx+1 < n) ? window.terrain.attributes[0][idx+1][2] : p00
+    let p10 = (idx+gridSize < n) ? window.terrain.attributes[0][idx+gridSize][2] : p00
+    let p11 = (idx+gridSize+1 < n)? window.terrain.attributes[0][idx+gridSize+1][2] : p00
+    let s = posx - row, t = posy - col
+    z = (1-s)*(1-t)*p00 + (1-s)*t*p01 + s*(1-t)*p10 + s*t*p11 + DRIVE_HEIGHT
+    eyePosition = [x,y,z]
+}
 
 
 
@@ -138,8 +165,8 @@ function draw() {
 
 function controlCameraMovement(seconds, prevSecond, eyePosition, forward) {
     const right = cross(forward, UPWARD);
-    const FORWARD_SPEED = 0.25;
-    const SIDE_SPEED = 0.25;
+    const FORWARD_SPEED = 0.1;
+    const SIDE_SPEED = 0.1;
     const ROTATE_SPEED = 0.5;
     const deltaTime = seconds - prevSecond;
 
@@ -192,8 +219,9 @@ function tick(milliseconds) {
     eyePosition = cameraState.eyePosition;
     forward = cameraState.forward;
     prevSecond = cameraState.prevSecond;
+    
 
-
+    moveCameraPosition()
     draw()
     requestAnimationFrame(tick)
 }
@@ -215,7 +243,7 @@ function fillScreen() {
         gl.viewport(0,0, canvas.width, canvas.height)
         // window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
         // window.p = m4perspNegZ(0.1, 10, 1, canvas.width, canvas.height)
-        window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
+        window.p = m4perspNegZ(0.001, 10, 1.5, canvas.width, canvas.height)
     }
 }
 
@@ -315,8 +343,12 @@ function makeGeom(gridSize, faults) {
  */
 function generateTerrain(gridSize, faults) {
     // Generate geometry
-    const terrain = makeGeom(gridSize, faults);
-    window.geom = setupGeomery(terrain);
+    // local
+    // const terrain = makeGeom(gridSize, faults, weathering)
+    // window.geom = setupGeomery(terrain)
+    // gloabl variables 
+    window.terrain = makeGeom(gridSize, faults)
+    window.geom = setupGeomery(window.terrain)
 
     requestAnimationFrame(tick);
 }
