@@ -24,20 +24,6 @@ const m4mul = (...args) => args.reduce((m1,m2) => {
   return ans // m*m
 })
 
-const m3row = (m,r) => new m.constructor(3).map((e,i)=>m[r+3*i])
-const m3rowdot = (m,r,v) => m[r]*v[0] + m[r+3]*v[1] + m[r+6]*v[2]
-const m3col = (m,c) => m.slice(c*3,(c+1)*3)
-const m3transpose = (m) => m.map((e,i) => m[((i&3)<<2)+(i>>2)])
-const m3mul = (...args) => args.reduce((m1,m2) => {
-  if(m2.length == 3) return m2.map((e,i)=>m3rowdot(m1,i,m2)) // m*v
-  if(m1.length == 3) return m1.map((e,i)=>m3rowdot(m2,i,m1)) // v*m
-  let ans = new m1.constructor(9)
-  for(let c=0; c<3; c+=1) for(let r=0; r<3; r+=1)
-    ans[r+c*3] = m3rowdot(m1,r,m3col(m2,c))
-  return ans // m*m
-})
-
-
 // graphics matrices
 const m4trans = (dx,dy,dz) => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, dx,dy,dz,1])
 const m4rotX = (ang) => { // around x axis
@@ -71,49 +57,6 @@ const m4perspNegZ = (near, far, fovy, width, height) => {
   return new Float32Array([sx,0,0,0, 0,sy,0,0, 0,0,-(far+near)/(far-near),-1, 0,0,(2*far*near)/(near-far),0]);
 }
 
-const m3rotX = (ang) => { // around x axis
-  let c = Math.cos(ang), s = Math.sin(ang);
-  return new Float32Array([1,0,0, 0,c,s, 0,-s,c]);
-}
-const m3rotY = (ang) => { // around y axis
-  let c = Math.cos(ang), s = Math.sin(ang);
-  return new Float32Array([c,0,-s, 0,1,0, s,0,c]);
-}
-
-const m3rotZ = (ang) => { // around z axis
-  let c = Math.cos(ang), s = Math.sin(ang);
-  return new Float32Array([c,s,0, -s,c,0, 0,0,1]);
-}
-
-const m3rotAxis = (axis, ang) => { // rotate around given axis
-  // 1. Normalize the rotation axis to ensure it's a unit vector
-  let [ux,uy,uz] = normalize(axis)
-   // 2. Precompute trigonometric values for the rotation angle
-  let c = Math.cos(ang), s = Math.sin(ang)
-  
-  let xx = ux*ux, xy = ux*uy, xz = ux*uz
-  let yy = uy*uy, yz = uy*uz, zz = uz*uz
-  return new Float32Array([
-      c+xx*(1-c), xy*(1-c)+uz*s, xz*(1-c)-uy*s,
-      xy*(1-c)-uz*s, c+yy*(1-c), yz*(1-c)+ux*s,
-      xz*(1-c)+uy*s, yz*(1-c)-ux*s, c+zz*(1-c)
-  ])
-}
-
-const m3fixAxes = (f, up) => { // f to -z, up to near +y
-  f = normalize(f)
-  let r = normalize(cross(f,up))
-  let u = cross(r,f)
-  return new Float32Array([
-    r[0],u[0],-f[0],
-    r[1],u[1],-f[1],
-    r[2],u[2],-f[2],
-  ])
-}
-const m3scale = (sx,sy,sz) => new Float32Array([sx,0,0, 0,sy,0, 0,0,sz])
-
-
-
 // quaternion
 const m4fromQ = (q) => { 
   let n = dot(q,q)
@@ -138,31 +81,6 @@ const m4toQ = (m) => {
     return normalize([m[8]-m[2], m[1]+m[4], a11-a00-a22+1, m[6]+m[9]])
   return normalize([m[1]-m[4], m[2]+m[8], m[6]+m[9], a22-a00-a11+1])
 }
-
-const m3fromQ = (q) => { 
-  let n = dot(q,q)
-  let s = n ? 2/n : 0
-  let xx = s*q[1]*q[1], xy = s*q[1]*q[2], xz = s*q[1]*q[3], xw = s*q[1]*q[0]
-  let yy = s*q[2]*q[2], yz = s*q[2]*q[3], yw = s*q[2]*q[0]
-  let zz = s*q[3]*q[3], zw = s*q[3]*q[0]
-  return new Float32Array([
-    1-yy-zz, xy+zw, xz-yw,
-    xy-zw, 1-xx-zz, yz+xw,
-    xz+yw, yz-xw, 1-xx-yy,
-  ])
-}
-const m3toQ = (m) => {
-  let a00 = m[0], a11 = m[4], a22 = m[8]
-  if (a00 + a11 + a22 > 0)
-    return normalize([a00+a11+a22+1, m[5]-m[7], m[6]-m[2], m[1]-m[3]])
-  if ((a00 > a11) && (a00 > a22))
-    return normalize([m[5]-m[7], a00-a11-a22+1, m[1]+m[3], m[6]-m[2]])
-  if (a11 > a22)
-    return normalize([m[6]-m[2], m[1]+m[3], a11-a00-a22+1, m[5]+m[7]])
-  return normalize([m[1]-m[3], m[2]+m[6], m[5]+m[7], a22-a00-a11+1])
-}
-
-
 
 // interpolation
 const lerp = (t,p0,p1) => add(mul(p0,1-t), mul(p1,t))

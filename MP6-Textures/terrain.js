@@ -1,66 +1,7 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
-const UPWARD = new Float32Array([0,0,1])
-const gridSize = 80, faults = 80
-const DRIVE_HEIGHT = 0.1
-
-// global variables
-var prevSecond = 0
-var eyePosition = [0, 0, 1]
-var forward = normalize([1, 0, 0])
-
-const m4viewF = (eye, forward, up) => m4mul(m4fixAxes(forward, up), m4trans(-eye[0],-eye[1],-eye[2]))
+var animationStarted = false
 
 
-/** util function */
-const clamp = (val, lb, ub) => Math.min(ub, Math.max(lb, val))
-
-function moveCameraPosition() {
-    const [rawX, rawY] = eyePosition;
-    const clampedX = clamp(rawX, -1.0, 1.0);
-    const clampedY = clamp(rawY, -1.0, 1.0);
-
-    const normalizedX = (clampedX + 1.0) / 2.0;
-    const normalizedY = (clampedY + 1.0) / 2.0;
-
-    const posX = gridSize * normalizedX;
-    const posY = gridSize * normalizedY;
-
-    const row = Math.min(Math.floor(posX), gridSize - 1);
-    const col = Math.min(Math.floor(posY), gridSize - 1);
-
-    const terrainAttributes = window.terrain.attributes[0];
-    const terrainSize = terrainAttributes.length;
-
-    const index = row * gridSize + col;
-
-    const getHeight = (offset) =>
-        (index + offset < terrainSize) ? terrainAttributes[index + offset][2] : terrainAttributes[index][2];
-
-    const p00 = getHeight(0);
-    const p01 = getHeight(1);
-    const p10 = getHeight(gridSize);
-    const p11 = getHeight(gridSize + 1);
-
-    const s = posX - row;
-    const t = posY - col;
-
-    const interpolatedZ =
-        (1 - s) * (1 - t) * p00 +
-        (1 - s) * t * p01 +
-        s * (1 - t) * p10 +
-        s * t * p11 +
-        DRIVE_HEIGHT;
-
-    eyePosition = [clampedX, clampedY, interpolatedZ];
-}
-
-
-
-
-/**
- * Given the source code of a vertex and fragment shader, compiles them,
- * and returns the linked program.
- */
 function compileShader(vs_source, fs_source) {
     const vs = gl.createShader(gl.VERTEX_SHADER)
     gl.shaderSource(vs, vs_source)
@@ -154,7 +95,7 @@ function setupGeomery(geom) {
     }
 }
 /** Draw one frame */
-function draw() {
+function draw(seconds) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     gl.useProgram(program)
     gl.bindVertexArray(geom.vao)
@@ -163,86 +104,27 @@ function draw() {
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
     gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
-    // const eyePosition = [1.3, 0.8, 0.8]
+    const eyePosition = [1.3, 0.8, 0.8]
     // light
     let ld = normalize([1,1,2])
     gl.uniform3fv(program.uniforms.lightdir, ld)
     gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
     gl.uniform3fv(program.uniforms.eye, eyePosition)
-    // let m = m4rotZ(0.2 * seconds) // rotating camera
-    // let v = m4view(eyePosition, [0,0,0], [0,0,1])
-    let v = m4viewF(eyePosition, forward, UPWARD)
+    let m = m4rotZ(0.2 * seconds) // rotating camera
+    let v = m4view(eyePosition, [0,0,0], [0,0,1])
 
 
-    gl.uniformMatrix4fv(program.uniforms.mv, false, v)
+    gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
     gl.uniformMatrix4fv(program.uniforms.p, false, p)
     
     gl.drawElements(geom.mode, geom.count, geom.type, 0)
 }
 
 
-
-
-function controlCameraMovement(seconds, prevSecond, eyePosition, forward) {
-    const right = cross(forward, UPWARD);
-    const FORWARD_SPEED = 0.1;
-    const SIDE_SPEED = 0.1;
-    const ROTATE_SPEED = 0.5;
-    const deltaTime = seconds - prevSecond;
-
-    let newEyePosition = [...eyePosition];
-    let newForward = [...forward];
-
-    // move forward/backward
-    if (keysBeingPressed['w']) {
-        newEyePosition = add(newEyePosition, mul(forward, FORWARD_SPEED * deltaTime));
-    } else if (keysBeingPressed['s']) {
-        newEyePosition = sub(newEyePosition, mul(forward, FORWARD_SPEED * deltaTime));
-    }
-
-    // move right/left
-    if (keysBeingPressed['a']) {
-        newEyePosition = sub(newEyePosition, mul(right, SIDE_SPEED * deltaTime));
-    } else if (keysBeingPressed['d']) {
-        newEyePosition = add(newEyePosition, mul(right, SIDE_SPEED * deltaTime));
-    }
-
-    // rotate around right (pitch)
-    if (keysBeingPressed['ArrowUp']) {
-        newForward = m3mul(m3rotAxis(right, ROTATE_SPEED * deltaTime), newForward);
-    } else if (keysBeingPressed['ArrowDown']) {
-        newForward = m3mul(m3rotAxis(right, -ROTATE_SPEED * deltaTime), newForward);
-    }
-
-    // rotate around UPWARD (yaw)
-    if (keysBeingPressed['ArrowLeft']) {
-        newForward = m3mul(m3rotAxis(UPWARD, ROTATE_SPEED * deltaTime), newForward);
-    } else if (keysBeingPressed['ArrowRight']) {
-        newForward = m3mul(m3rotAxis(UPWARD, -ROTATE_SPEED * deltaTime), newForward);
-    }
-
-    return {
-        eyePosition: newEyePosition,
-        forward: newForward,
-        prevSecond: seconds
-    };
-}
-
-
-
-
 /** Compute any time-varying or animated aspects of the scene */
 function tick(milliseconds) {
     let seconds = milliseconds / 1000;
-    const cameraState = controlCameraMovement(seconds, prevSecond, eyePosition, forward);
-    
-    eyePosition = cameraState.eyePosition;
-    forward = cameraState.forward;
-    prevSecond = cameraState.prevSecond;
-    
-
-    moveCameraPosition()
-    draw()
+    draw(seconds)
     requestAnimationFrame(tick)
 }
 
@@ -263,7 +145,7 @@ function fillScreen() {
         gl.viewport(0,0, canvas.width, canvas.height)
         // window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
         // window.p = m4perspNegZ(0.1, 10, 1, canvas.width, canvas.height)
-        window.p = m4perspNegZ(0.001, 10, 1.5, canvas.width, canvas.height)
+        window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
     }
 }
 
@@ -363,10 +245,14 @@ function makeGeom(gridSize, faults) {
  */
 function generateTerrain(gridSize, faults) {
     // Generate geometry
-    window.terrain = makeGeom(gridSize, faults)
-    window.geom = setupGeomery(window.terrain)
+    const terrain = makeGeom(gridSize, faults);
+    window.geom = setupGeomery(terrain);
 
-    requestAnimationFrame(tick);
+    // Start animation loop if not already started
+    if (!animationStarted) {
+        animationStarted = true;
+        requestAnimationFrame(tick);
+    }
 }
 
 
@@ -385,8 +271,30 @@ window.addEventListener('load', async (event) => {
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     fillScreen()
-    window.keysBeingPressed = {}
-    window.addEventListener('keydown', event => keysBeingPressed[event.key] = true)
-    window.addEventListener('keyup', event => keysBeingPressed[event.key] = false)
-    generateTerrain(gridSize, faults)
+    window.addEventListener('resize', fillScreen)
+    document.querySelector('#submit').addEventListener('click', event => {
+        const gridSize = Number(document.querySelector('#gridsize').value) || 2
+        const faults = Number(document.querySelector('#faults').value) || 0
+        // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
+        if (gridSize < 2) {
+            console.error("grid size should be greater than 1")
+            return
+        }
+        if (faults < 0) {
+            console.error("fault should be non-negative")
+            return 
+         }
+        generateTerrain(gridSize, faults)
+    })
+
+    // // by default generate a 50x50 grid and 50 faults
+    // generateTerrain(50, 50)
+
+    // // initial
+    // const gridSize = Number(document.querySelector('#gridsize').value) || 2
+    // const faults = Number(document.querySelector('#faults').value) || 0
+    // generateTerrain(gridSize, faults)
+    
+    // // render
+    // requestAnimationFrame(tick)
 })
