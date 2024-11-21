@@ -1,7 +1,9 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
-var animationStarted = false
 
-
+/**
+ * Given the source code of a vertex and fragment shader, compiles them,
+ * and returns the linked program.
+ */
 function compileShader(vs_source, fs_source) {
     const vs = gl.createShader(gl.VERTEX_SHADER)
     gl.shaderSource(vs, vs_source)
@@ -248,11 +250,7 @@ function generateTerrain(gridSize, faults) {
     const terrain = makeGeom(gridSize, faults);
     window.geom = setupGeomery(terrain);
 
-    // Start animation loop if not already started
-    if (!animationStarted) {
-        animationStarted = true;
-        requestAnimationFrame(tick);
-    }
+    requestAnimationFrame(tick);
 }
 
 
@@ -272,29 +270,6 @@ window.addEventListener('load', async (event) => {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     fillScreen()
     window.addEventListener('resize', fillScreen)
-    document.querySelector('#submit').addEventListener('click', event => {
-        const gridSize = Number(document.querySelector('#gridsize').value) || 2
-        const faults = Number(document.querySelector('#faults').value) || 0
-        // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
-        if (gridSize < 2) {
-            console.error("grid size should be greater than 1")
-            return
-        }
-        if (faults < 0) {
-            console.error("fault should be non-negative")
-            return 
-         }
-        generateTerrain(gridSize, faults)
-    })
-
-    // // by default generate a 50x50 grid and 50 faults
-    // generateTerrain(50, 50)
-
-    // // initial
-    // const gridSize = Number(document.querySelector('#gridsize').value) || 2
-    // const faults = Number(document.querySelector('#faults').value) || 0
-    // generateTerrain(gridSize, faults)
-    
-    // // render
-    // requestAnimationFrame(tick)
+    const gridSize = 80, faults = 80
+    generateTerrain(gridSize, faults)
 })
