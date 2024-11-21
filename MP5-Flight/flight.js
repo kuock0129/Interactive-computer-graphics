@@ -1,11 +1,8 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
 const UPWARD = new Float32Array([0,0,1])
-/** global variables */
 var eyePosition = [1.3, 0.8, 0.7]
 var prevSecond = 0
 var forward = normalize(mul(eyePosition, -1))
-
-/** customized view function */
 const m4viewF = (eye, forward, up) => m4mul(m4fixAxes(forward, up), m4trans(-eye[0],-eye[1],-eye[2]))
 
 
