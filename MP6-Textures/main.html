@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <title>Flight</title>
+    <script src="include/wrapWebGL2.js"></script>
+    <script src="include/math.js"></script>
+    <script src="drive.js"></script>
+    <style>
+        body {
+            margin: 0; border: none; padding: 0;
+            display: flex; flex-direction: column;
+            width: 100%; height: 100vh;
+        }
+        .controls {
+            flex: 0 0 auto;
+        }
+        .controls > * { margin: 1em; }
+        .display {
+            flex-grow: 1;
+            line-height: 0rem;
+        }
+        </style>
+</head>
+<body>
+    <div class="display">
+        <canvas width="300" height="300"></canvas>
+    </div>
+</body></html>
