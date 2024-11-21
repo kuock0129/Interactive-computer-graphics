@@ -119,7 +119,7 @@ function draw() {
     gl.uniform3fv(program.uniforms.eye, eyePosition)
     // let m = m4rotZ(0.2 * seconds) // rotating camera
     // let v = m4view(eyePosition, [0,0,0], [0,0,1])
-    let v = m4viewF(eyePosition, forward, UPWARD)
+    let v = m4view(eyePosition, forward, UPWARD)
 
 
     gl.uniformMatrix4fv(program.uniforms.mv, false, v)
