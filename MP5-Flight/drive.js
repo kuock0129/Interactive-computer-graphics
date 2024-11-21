@@ -1,7 +1,7 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
 const UPWARD = new Float32Array([0,0,1])
 const gridSize = 80, faults = 80
-const DRIVE_HEIGHT = 0.05
+const DRIVE_HEIGHT = 0.1
 
 // global variables
 var prevSecond = 0
@@ -15,24 +15,45 @@ const m4viewF = (eye, forward, up) => m4mul(m4fixAxes(forward, up), m4trans(-eye
 const clamp = (val, lb, ub) => Math.min(ub, Math.max(lb, val))
 
 function moveCameraPosition() {
-    let [x, y, z] = eyePosition
-    x = clamp(x, -1.0, 1.0)
-    y = clamp(y, -1.0, 1.0)
-    let posx = gridSize * (x + 1.0) / 2.0
-    let posy = gridSize * (y + 1.0) / 2.0
-    let row = Math.min(Math.floor(posx), gridSize - 1)
-    let col = Math.min(Math.floor(posy), gridSize - 1)
-    let n = window.terrain.attributes[0].length
-    let idx = row * gridSize + col
+    const [rawX, rawY] = eyePosition;
+    const clampedX = clamp(rawX, -1.0, 1.0);
+    const clampedY = clamp(rawY, -1.0, 1.0);
 
-    let p00 = window.terrain.attributes[0][idx][2]
-    let p01 = (idx+1 < n) ? window.terrain.attributes[0][idx+1][2] : p00
-    let p10 = (idx+gridSize < n) ? window.terrain.attributes[0][idx+gridSize][2] : p00
-    let p11 = (idx+gridSize+1 < n)? window.terrain.attributes[0][idx+gridSize+1][2] : p00
-    let s = posx - row, t = posy - col
-    z = (1-s)*(1-t)*p00 + (1-s)*t*p01 + s*(1-t)*p10 + s*t*p11 + DRIVE_HEIGHT
-    eyePosition = [x,y,z]
+    const normalizedX = (clampedX + 1.0) / 2.0;
+    const normalizedY = (clampedY + 1.0) / 2.0;
+
+    const posX = gridSize * normalizedX;
+    const posY = gridSize * normalizedY;
+
+    const row = Math.min(Math.floor(posX), gridSize - 1);
+    const col = Math.min(Math.floor(posY), gridSize - 1);
+
+    const terrainAttributes = window.terrain.attributes[0];
+    const terrainSize = terrainAttributes.length;
+
+    const index = row * gridSize + col;
+
+    const getHeight = (offset) =>
+        (index + offset < terrainSize) ? terrainAttributes[index + offset][2] : terrainAttributes[index][2];
+
+    const p00 = getHeight(0);
+    const p01 = getHeight(1);
+    const p10 = getHeight(gridSize);
+    const p11 = getHeight(gridSize + 1);
+
+    const s = posX - row;
+    const t = posY - col;
+
+    const interpolatedZ =
+        (1 - s) * (1 - t) * p00 +
+        (1 - s) * t * p01 +
+        s * (1 - t) * p10 +
+        s * t * p11 +
+        DRIVE_HEIGHT;
+
+    eyePosition = [clampedX, clampedY, interpolatedZ];
 }
+
 
 
 
