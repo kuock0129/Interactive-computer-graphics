@@ -1,111 +1,310 @@
+const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
+var animationStarted = false
+
+
+function compileShader(vs_source, fs_source) {
+    const vs = gl.createShader(gl.VERTEX_SHADER)
+    gl.shaderSource(vs, vs_source)
+    gl.compileShader(vs)
+    if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(vs))
+        throw Error("Vertex shader compilation failed")
+    }
+    const fs = gl.createShader(gl.FRAGMENT_SHADER)
+    gl.shaderSource(fs, fs_source)
+    gl.compileShader(fs)
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(fs))
+        throw Error("Fragment shader compilation failed")
+    }
+    const program = gl.createProgram()
+    gl.attachShader(program, vs)
+    gl.attachShader(program, fs)
+    gl.linkProgram(program)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(program))
+        throw Error("Linking failed")
+    }
+    
+    const uniforms = {}
+    for(let i=0; i<gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i+=1) {
+        let info = gl.getActiveUniform(program, i)
+        uniforms[info.name] = gl.getUniformLocation(program, info.name)
+    }
+    program.uniforms = uniforms
+    return program
+}
 /**
- * class for celestial body simulated in this mp. There are some assumption for 
- * my celestial body to simplify the work.
- *  1. The axis for rotation should only be +Z on each body's coordinate system
- *  2. The axis for revolvement should only be X-Y plane on each body's coordinate system
+ * Sends per-vertex data to the GPU and connects it to a VS input
+ * 
+ * @param data    a 2D array of per-vertex data (e.g. [[x,y,z,w],[x,y,z,w],...])
+ * @param loc     the layout location of the vertex shader's `in` attribute
+ * @param mode    (optional) gl.STATIC_DRAW, gl.DYNAMIC_DRAW, etc
+ * 
+ * @returns the ID of the buffer in GPU memory; useful for changing data later
  */
-class CelestialBody {
-    /**
-     * 
-     * @param {*} shape enum define in CelestialBodyType
-     * @param {*} scale a number for the size of the body
-     * @param {*} rotateFreqSeconds the coefficient for its rotation i.e. 2*pi/period
-     */
-    constructor(shape, scale, rotateFreqSeconds) {
-        this.shape = shape // whether tetrahedron or octahedron
-        this.scale = scale
-        this.rotateFreqSeconds = rotateFreqSeconds
-
-        // for next hierarchy
-        this.children = []
-        this.childrenCoordinates = []
-        this.childrenDistances = []
-        this.childrenRevolveFreqSeconds = []
+function supplyDataBuffer(data, loc, mode) {
+    if (mode === undefined) mode = gl.STATIC_DRAW
+    
+    const buf = gl.createBuffer()
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+    const f32 = new Float32Array(data.flat())
+    gl.bufferData(gl.ARRAY_BUFFER, f32, mode)
+    
+    gl.vertexAttribPointer(loc, data[0].length, gl.FLOAT, false, 0, 0)
+    gl.enableVertexAttribArray(loc)
+    
+    return buf;
+}
+/**
+ * Creates a Vertex Array Object and puts into it all of the data in the given
+ * JSON structure, which should have the following form:
+ * 
+ * ````
+ * {"triangles": a list of of indices of vertices
+ * ,"attributes":
+ *  [ a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 0
+ *  , a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 1
+ *  , ...
+ *  ]
+ * }
+ * ````
+ * 
+ * @returns an object with four keys:
+ *  - mode = the 1st argument for gl.drawElements
+ *  - count = the 2nd argument for gl.drawElements
+ *  - type = the 3rd argument for gl.drawElements
+ *  - vao = the vertex array object for use with gl.bindVertexArray
+ */
+function setupGeomery(geom) {
+    var triangleArray = gl.createVertexArray()
+    gl.bindVertexArray(triangleArray)
+    for(let i=0; i<geom.attributes.length; i+=1) {
+        let data = geom.attributes[i]
+        supplyDataBuffer(data, i)
     }
-
-    /** draw current object on screen */
-    draw(seconds, transform) {
-        let geom = (this.shape === CelestialBodyType.TETRAHEDRON) ? tetrahedron : octahedron
-        gl.bindVertexArray(geom.vao)
-
-        // apply rotate, scaling
-        let trans = m4mul(m4rotZ(seconds * this.rotateFreqSeconds), m4scale(this.scale, this.scale, this.scale))
-        gl.uniformMatrix4fv(program.uniforms.mv, false,  m4mul(transform, trans))
-        gl.drawElements(geom.mode, geom.count, geom.type, 0)
-
-        // iterate all children
-        for (let i = 0; i < this.children.length; i++) {
-            let displacement = m4mul(m4rotZ(this.childrenRevolveFreqSeconds[i] * seconds), this.childrenDistances[i])
-            let relativeMat = m4mul(m4trans(...displacement.slice(0, 3)), this.childrenCoordinates[i])
-            this.children[i].draw(seconds, m4mul(transform, relativeMat))
-        }
+    var indices = new Uint16Array(geom.triangles.flat())
+    var indexBuffer = gl.createBuffer()
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+    return {
+        mode: gl.TRIANGLES,
+        count: indices.length,
+        type: gl.UNSIGNED_SHORT,
+        vao: triangleArray
     }
+}
+/** Draw one frame */
+function draw(seconds) {
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    gl.useProgram(program)
+    gl.bindVertexArray(geom.vao)
+    // gl.uniform4fv(program.uniforms.color, IlliniOrange)
+    // let m = m4rotX(seconds)
+    // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
-    /**
-     * add another celestial body under current object
-     * @param child                 celestial object
-     * @param coordinate            transformation from child coordinate system to parent
-     * @param distance              the displacement between the child and the parent
-     * @param revolveFreqSeconds    the coefficient for the revolvement i.e. 2*pi/period
-    */
-    appendChild(child, coordinate, distance, revolveFreqSeconds) {
-        this.children.push(child)
-        this.childrenCoordinates.push(coordinate)
-        this.childrenDistances.push(distance)
-        this.childrenRevolveFreqSeconds.push(revolveFreqSeconds)
+    gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
+    const eyePosition = [1.3, 0.8, 0.8]
+    // light
+    let ld = normalize([1,1,2])
+    gl.uniform3fv(program.uniforms.lightdir, ld)
+    gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
+    gl.uniform3fv(program.uniforms.eye, eyePosition)
+    let m = m4rotZ(0.2 * seconds) // rotating camera
+    let v = m4view(eyePosition, [0,0,0], [0,0,1])
+
+
+    gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
+    gl.uniformMatrix4fv(program.uniforms.p, false, p)
+    
+    gl.drawElements(geom.mode, geom.count, geom.type, 0)
+}
+
+
+/** Compute any time-varying or animated aspects of the scene */
+function tick(milliseconds) {
+    let seconds = milliseconds / 1000;
+    draw(seconds)
+    requestAnimationFrame(tick)
+}
+
+
+
+
+/** Resizes the canvas to completely fill the screen */
+function fillScreen() {
+    let canvas = document.querySelector('canvas')
+    document.body.style.margin = '0'
+    canvas.style.width = '100vw'
+    canvas.style.height = '100vh'
+    canvas.width = canvas.clientWidth
+    canvas.height = canvas.clientHeight
+    canvas.style.width = ''
+    canvas.style.height = ''
+    if (window.gl) {
+        gl.viewport(0,0, canvas.width, canvas.height)
+        // window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
+        // window.p = m4perspNegZ(0.1, 10, 1, canvas.width, canvas.height)
+        window.p = m4perspNegZ(0.1, 10, 1.5, canvas.width, canvas.height)
     }
 }
 
-// construct celestial body
-let sunRotationFreq = 2.0 * Math.PI / 2.0       // period = 2s
-let earthRotationFreq = 2.0 * Math.PI / 1.0     // period = 1s
-let moonRotationFreq = 2.0 * Math.PI / 3.0
-let marsRotationFreq = earthRotationFreq / 2.2
-let phobosRotationFreq = marsRotationFreq * 2.2
-let deimosRotationFreq = marsRotationFreq + 0.1
-
-var solarSystem = new CelestialBody(CelestialBodyType.OCTAHEDRON, 1.0, sunRotationFreq)
-var earth = new CelestialBody(CelestialBodyType.OCTAHEDRON, 0.5, earthRotationFreq)
-var moon = new CelestialBody(CelestialBodyType.TETRAHEDRON, 0.1, moonRotationFreq)
-var mars = new CelestialBody(CelestialBodyType.OCTAHEDRON, 0.4, marsRotationFreq)
-var phobos = new CelestialBody(CelestialBodyType.TETRAHEDRON, 0.06, phobosRotationFreq)
-var deimos = new CelestialBody(CelestialBodyType.TETRAHEDRON, 0.03, deimosRotationFreq)
-
-// relation between sun and earth
-let earth2SunCoordinate = m4rotY(Math.PI * 23.5 / 180.0) // 23.5 degree
-let earth2SunDistance = new Float32Array([3.5, 0, 0, 0])
-let earthRevolveFreq = 2.0 * Math.PI / 10.0
-
-// relation between earth and moon
-let moon2EarthCoordinate = IdentityMatrix
-let moon2EarthDistance = new Float32Array([0.7, 0, 0, 0])
-let moonRevolveFreq = moonRotationFreq // making it always faces the side to the earth
-
-// relation between mars and sun
-// apply rotationZ to prevent having rotation axis parallel to the earth
-let mars2SunCoordinate = m4mul(m4rotZ(Math.PI * 60.0 / 180.0), m4rotY(Math.PI * 25 / 180.0)) // 25 degree
-let mars2SunDistance = mul(earth2SunDistance, 1.6)
-let marsRevolveFreq = earthRevolveFreq / 1.9
-
-// relation between mars and phobos
-let phobos2MarsCoordinate = IdentityMatrix
-let phobos2MarsDistance = new Float32Array([0.5, 0, 0, 0])
-let phobosRevolveFreq = phobosRotationFreq // making it always faces the side to the mars
-
-// relation between mars and deimos
-let deimos2MarsCoordinate = IdentityMatrix
-let deimos2MarsDistance = mul(phobos2MarsDistance, 2.0)
-let deimosRevolveFreq = deimosRotationFreq // making it always faces the side to the mars
-
-// building hierarchy
-earth.appendChild(moon, moon2EarthCoordinate, moon2EarthDistance, moonRevolveFreq)
-mars.appendChild(phobos, phobos2MarsCoordinate, phobos2MarsDistance, phobosRevolveFreq)
-mars.appendChild(deimos, deimos2MarsCoordinate, deimos2MarsDistance, deimosRevolveFreq)
-
-solarSystem.appendChild(earth, earth2SunCoordinate, earth2SunDistance, earthRevolveFreq)
-solarSystem.appendChild(mars, mars2SunCoordinate, mars2SunDistance, marsRevolveFreq)
 
 
 
 
 
+
+function createFault(positions) {
+    // TODO: create faults
+    // create random p
+    let p = [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0] // [-1, 1]
+    let theta = 2.0 * Math.PI * Math.random();
+    let norm = [Math.cos(theta), Math.sin(theta), 0]
+    const R = 1.5
+    for (let i = 0; i < positions.length; i += 1) {
+        // positions[i][2] = Math.random() / 10.0
+        let product = dot(sub(positions[i], p), norm)
+        if (Math.abs(product) >= R) {
+            continue;
+        }
+        const coefficient = Math.pow(1 - Math.pow(product / R, 2), 2)
+
+
+        if (product > 0) {
+            positions[i][2] += coefficient ;
+        } else {
+            positions[i][2] -= coefficient ;
+        }
+    }
+}
+
+
+
+
+
+
+/** make terrain based on gridSize and faults */
+function makeGeom(gridSize, faults) {
+    g = {"triangles":
+        []
+    ,"attributes":
+        [ // position
+            []
+            , // normal
+            []
+        ]
+    }
+    // create grid
+    // make x, y range from [-1, 1]
+    const d = 2.0 / (gridSize - 1.0)
+    for(let i = 0; i < gridSize; i+=1) {
+        for (let j = 0; j < gridSize; j+=1) {
+            g.attributes[0].push([-1.0 + d * i, -1.0 + d * j, 0])
+        }
+    }
+
+    // create fault
+    for (let i = 0; i < faults; i += 1) {
+        createFault(g.attributes[0])
+    }
+    // normalize height
+    let maxHeight = Math.max(...g.attributes[0].map(pos => pos[2]))
+    let minHeight = Math.min(...g.attributes[0].map(pos => pos[2]))
+    const PEAK_HEIGHT = 0.8
+    g.attributes[0].forEach(pos => {
+        if (maxHeight !== minHeight) {
+            pos[2] = PEAK_HEIGHT * (pos[2] - (maxHeight + minHeight) / 2) / (maxHeight - minHeight)
+        }
+    })
+
+
+    // create triangles
+    for (let i = 0; i < gridSize - 1; i += 1) {
+        for (let j = 0; j < gridSize - 1; j += 1) {
+            let cur = i * gridSize + j;
+            g.triangles.push([
+                cur, cur + 1, cur + gridSize
+            ])
+            g.triangles.push([
+                cur + 1, cur + gridSize, cur + gridSize + 1
+            ])
+        }
+    }
+
+    // add normals
+    for (let i = 0; i < g.attributes[0].length; i += 1) {
+        let row = Math.floor(i / gridSize)
+        let col = i % gridSize
+        let n = (row > 0) ? g.attributes[0][i - gridSize] : g.attributes[0][i];
+        let s = (row < gridSize - 1) ? g.attributes[0][i + gridSize] : g.attributes[0][i];
+        let w = (col > 0) ? g.attributes[0][i - 1] : g.attributes[0][i];
+        let e = (col < gridSize - 1) ? g.attributes[0][i + 1] : g.attributes[0][i];
+        let normal = cross(sub(n, s), sub(w, e))
+        g.attributes[1].push(normal)
+    }
+
+    return g
+}
+
+
+
+
+/** generate geom and render on screen */
+function generateTerrain(gridSize, faults) {
+    // get geometry
+    const terrain = makeGeom(gridSize, faults)
+    window.geom = setupGeomery(terrain)
+    // // render
+    // requestAnimationFrame(tick)
+    if (!animationStarted) {
+        animationStarted = true
+        requestAnimationFrame(tick)
+    }
+}
+
+
+
+
+/** Compile, link, set up geometry */
+window.addEventListener('load', async (event) => {
+    window.gl = document.querySelector('canvas').getContext('webgl2',
+    // optional configuration object: see https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext
+    {antialias: false, depth:true, preserveDrawingBuffer:true}
+    )
+    // let vs = document.querySelector('#vert').textContent.trim()
+    // let fs = document.querySelector('#frag').textContent.trim()
+    let vs = await fetch('vertexShader.glsl').then(res => res.text())
+    let fs = await fetch('fragmentShader.glsl').then(res => res.text())
+    window.program = compileShader(vs,fs)
+    gl.enable(gl.DEPTH_TEST)
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    fillScreen()
+    window.addEventListener('resize', fillScreen)
+    document.querySelector('#submit').addEventListener('click', event => {
+        const gridSize = Number(document.querySelector('#gridsize').value) || 2
+        const faults = Number(document.querySelector('#faults').value) || 0
+        // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
+        if (gridSize < 2) {
+            console.error("grid size should be greater than 1")
+            return
+        }
+        if (faults < 0) {
+            console.error("fault should be non-negative")
+            return 
+         }
+        generateTerrain(gridSize, faults)
+    })
+
+    // // by default generate a 50x50 grid and 50 faults
+    // generateTerrain(50, 50)
+
+    // // initial
+    // const gridSize = Number(document.querySelector('#gridsize').value) || 2
+    // const faults = Number(document.querySelector('#faults').value) || 0
+    // generateTerrain(gridSize, faults)
+    
+    // // render
+    // requestAnimationFrame(tick)
+})

@@ -155,115 +155,105 @@ function fillScreen() {
 
 
 
+/**
+ * Creates faults to adjust terrain heights.
+ * @param {Array} positions - Array of vertex positions [x, y, z].
+ */
 function createFault(positions) {
-    // TODO: create faults
-    // create random p
-    let p = [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0] // [-1, 1]
-    let theta = 2.0 * Math.PI * Math.random();
-    let norm = [Math.cos(theta), Math.sin(theta), 0]
-    const R = 1.5
-    for (let i = 0; i < positions.length; i += 1) {
-        // positions[i][2] = Math.random() / 10.0
-        let product = dot(sub(positions[i], p), norm)
-        if (Math.abs(product) >= R) {
-            continue;
-        }
-        const coefficient = Math.pow(1 - Math.pow(product / R, 2), 2)
+    // Generate a random point p and a normalized direction vector norm
+    const p = [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0]; // Random point in [-1, 1] range
+    const theta = 2.0 * Math.PI * Math.random();
+    const norm = [Math.cos(theta), Math.sin(theta), 0];
+    const R = 1.5; // Fault influence radius
 
+    positions.forEach(position => {
+        const product = dot(sub(position, p), norm);
+        if (Math.abs(product) >= R) return; // Skip if outside influence radius
 
-        if (product > 0) {
-            positions[i][2] += coefficient ;
-        } else {
-            positions[i][2] -= coefficient ;
-        }
-    }
+        const coefficient = Math.pow(1 - Math.pow(product / R, 2), 2);
+        position[2] += (product > 0 ? 1 : -1) * coefficient;
+    });
 }
 
-
-
-
-
-
-/** make terrain based on gridSize and faults */
+/**
+ * Generates a geometry grid with faults to simulate terrain.
+ * @param {number} gridSize - Number of vertices per grid row/column.
+ * @param {number} faults - Number of faults to apply to the terrain.
+ * @returns {Object} The geometry data with vertices, normals, and triangles.
+ */
 function makeGeom(gridSize, faults) {
-    g = {"triangles":
-        []
-    ,"attributes":
-        [ // position
-            []
-            , // normal
-            []
-        ]
-    }
-    // create grid
-    // make x, y range from [-1, 1]
-    const d = 2.0 / (gridSize - 1.0)
-    for(let i = 0; i < gridSize; i+=1) {
-        for (let j = 0; j < gridSize; j+=1) {
-            g.attributes[0].push([-1.0 + d * i, -1.0 + d * j, 0])
+    const geom = {
+        triangles: [],
+        attributes: [[], []] // [positions, normals]
+    };
+
+    // Create grid with positions in [-1, 1] range
+    const step = 2.0 / (gridSize - 1);
+    for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+            geom.attributes[0].push([-1.0 + step * i, -1.0 + step * j, 0]);
         }
     }
 
-    // create fault
-    for (let i = 0; i < faults; i += 1) {
-        createFault(g.attributes[0])
+    // Apply faults to create terrain height variation
+    for (let i = 0; i < faults; i++) {
+        createFault(geom.attributes[0]);
     }
-    // normalize height
-    let maxHeight = Math.max(...g.attributes[0].map(pos => pos[2]))
-    let minHeight = Math.min(...g.attributes[0].map(pos => pos[2]))
-    const PEAK_HEIGHT = 0.8
-    g.attributes[0].forEach(pos => {
+
+    // Normalize terrain height
+    const heights = geom.attributes[0].map(pos => pos[2]);
+    const maxHeight = Math.max(...heights);
+    const minHeight = Math.min(...heights);
+    const PEAK_HEIGHT = 0.8;
+
+    geom.attributes[0].forEach(pos => {
         if (maxHeight !== minHeight) {
-            pos[2] = PEAK_HEIGHT * (pos[2] - (maxHeight + minHeight) / 2) / (maxHeight - minHeight)
+            pos[2] = PEAK_HEIGHT * (pos[2] - (maxHeight + minHeight) / 2) / (maxHeight - minHeight);
         }
-    })
+    });
 
-
-    // create triangles
-    for (let i = 0; i < gridSize - 1; i += 1) {
-        for (let j = 0; j < gridSize - 1; j += 1) {
-            let cur = i * gridSize + j;
-            g.triangles.push([
-                cur, cur + 1, cur + gridSize
-            ])
-            g.triangles.push([
-                cur + 1, cur + gridSize, cur + gridSize + 1
-            ])
+    // Create triangles (indices)
+    for (let i = 0; i < gridSize - 1; i++) {
+        for (let j = 0; j < gridSize - 1; j++) {
+            const cur = i * gridSize + j;
+            geom.triangles.push([cur, cur + 1, cur + gridSize]);
+            geom.triangles.push([cur + 1, cur + gridSize, cur + gridSize + 1]);
         }
     }
 
-    // add normals
-    for (let i = 0; i < g.attributes[0].length; i += 1) {
-        let row = Math.floor(i / gridSize)
-        let col = i % gridSize
-        let n = (row > 0) ? g.attributes[0][i - gridSize] : g.attributes[0][i];
-        let s = (row < gridSize - 1) ? g.attributes[0][i + gridSize] : g.attributes[0][i];
-        let w = (col > 0) ? g.attributes[0][i - 1] : g.attributes[0][i];
-        let e = (col < gridSize - 1) ? g.attributes[0][i + 1] : g.attributes[0][i];
-        let normal = cross(sub(n, s), sub(w, e))
-        g.attributes[1].push(normal)
-    }
+    // Calculate normals for smooth shading
+    geom.attributes[0].forEach((_, i) => {
+        const row = Math.floor(i / gridSize);
+        const col = i % gridSize;
 
-    return g
+        const n = (row > 0) ? geom.attributes[0][i - gridSize] : geom.attributes[0][i];
+        const s = (row < gridSize - 1) ? geom.attributes[0][i + gridSize] : geom.attributes[0][i];
+        const w = (col > 0) ? geom.attributes[0][i - 1] : geom.attributes[0][i];
+        const e = (col < gridSize - 1) ? geom.attributes[0][i + 1] : geom.attributes[0][i];
+
+        const normal = cross(sub(n, s), sub(w, e));
+        geom.attributes[1].push(normal);
+    });
+
+    return geom;
 }
 
-
-
-
-/** generate geom and render on screen */
+/**
+ * Generates terrain geometry and initializes rendering.
+ * @param {number} gridSize - Number of vertices per grid row/column.
+ * @param {number} faults - Number of faults to apply to the terrain.
+ */
 function generateTerrain(gridSize, faults) {
-    // get geometry
-    const terrain = makeGeom(gridSize, faults)
-    window.geom = setupGeomery(terrain)
-    // // render
-    // requestAnimationFrame(tick)
+    // Generate geometry
+    const terrain = makeGeom(gridSize, faults);
+    window.geom = setupGeomery(terrain);
+
+    // Start animation loop if not already started
     if (!animationStarted) {
-        animationStarted = true
-        requestAnimationFrame(tick)
+        animationStarted = true;
+        requestAnimationFrame(tick);
     }
 }
-
-
 
 
 /** Compile, link, set up geometry */
