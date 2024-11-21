@@ -275,6 +275,7 @@ window.addEventListener('load', async (event) => {
     document.querySelector('#submit').addEventListener('click', event => {
         const gridSize = Number(document.querySelector('#gridsize').value) || 2
         const faults = Number(document.querySelector('#faults').value) || 0
+        const  material = document.querySelector('#material').value
         // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
         if (gridSize < 2) {
             console.error("grid size should be greater than 1")

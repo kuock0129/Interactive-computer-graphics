@@ -2,10 +2,10 @@
 <html lang="en"><head>
 <meta http-equiv="content-type" content="text/html; charset=UTF-8">
     <meta charset="utf-8">
-    <title>Terrain</title>
+    <title>Texture</title>
     <script src="include/wrapWebGL2.js"></script>
     <script src="include/math.js"></script>
-    <script src="terrain.js"></script>
+    <script src="texture.js"></script>
     <style>
         body {
             margin: 0; border: none; padding: 0;
@@ -26,6 +26,7 @@
     <form class="controls" action="javascript:void(0);">
         <label>Grid size: <input id="gridsize" type="number" value="50"/></label>
         <label>Faults: <input id="faults" type="number" value="50"/></label>
+        <label>Material: <input id="material" type="text" value=""/></label>
         <input id="submit" type="submit" value="Regenerate Terrain"/>
     </form>
     <div class="display">
