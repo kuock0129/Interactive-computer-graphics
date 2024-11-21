@@ -20,12 +20,12 @@ function moveCameraPosition() {
     y = clamp(y, -1.0, 1.0)
     let posx = gridSize * (x + 1.0) / 2.0
     let posy = gridSize * (y + 1.0) / 2.0
-    let row = Math.floor(posx)
-    let col = Math.floor(posy)
+    let row = Math.min(Math.floor(posx), gridSize - 1)
+    let col = Math.min(Math.floor(posy), gridSize - 1)
     let n = window.terrain.attributes[0].length
     let idx = row * gridSize + col
 
-    let p00 = (idx < n) ? window.terrain.attributes[0][idx][2] : window.terrain.attributes[0][n-1][2] // just in case
+    let p00 = window.terrain.attributes[0][idx][2]
     let p01 = (idx+1 < n) ? window.terrain.attributes[0][idx+1][2] : p00
     let p10 = (idx+gridSize < n) ? window.terrain.attributes[0][idx+gridSize][2] : p00
     let p11 = (idx+gridSize+1 < n)? window.terrain.attributes[0][idx+gridSize+1][2] : p00
