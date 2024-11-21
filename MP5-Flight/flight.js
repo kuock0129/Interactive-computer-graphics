@@ -1,8 +1,11 @@
 const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
 const UPWARD = new Float32Array([0,0,1])
+const gridSize = 80, faults = 80
+// global variables
 var eyePosition = [1.3, 0.8, 0.7]
 var prevSecond = 0
 var forward = normalize(mul(eyePosition, -1))
+
 const m4viewF = (eye, forward, up) => m4mul(m4fixAxes(forward, up), m4trans(-eye[0],-eye[1],-eye[2]))
 
 
@@ -129,6 +132,8 @@ function draw() {
     
     gl.drawElements(geom.mode, geom.count, geom.type, 0)
 }
+
+
 
 
 function controlCameraMovement(seconds, prevSecond, eyePosition, forward) {
@@ -335,6 +340,5 @@ window.addEventListener('load', async (event) => {
     window.keysBeingPressed = {}
     window.addEventListener('keydown', event => keysBeingPressed[event.key] = true)
     window.addEventListener('keyup', event => keysBeingPressed[event.key] = false)
-    const gridSize = 80, faults = 80
     generateTerrain(gridSize, faults)
 })
