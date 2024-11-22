@@ -3,6 +3,7 @@ var animationStarted = false
 var useTexture = false
 var textureProgram
 var nontextureProgram
+var slot = 0
 
 
 /** Set non-texture color on terrain */
@@ -24,17 +25,25 @@ function changeMaterial(value) {
     } else if (/[.](jpg|png)$/.test(value)) {
         let img = new Image()
         img.crossOrigin = 'anonymous'
-        img.src = urlOfImageAsString
+        img.src = value
         img.addEventListener('load', event => {
             // change fragment shader
-            let slot = 0; // or a larger integer if this isn't the only texture
             let texture = gl.createTexture()
-            gl.activeTexture(gl.TEXTURE0 + slot)
+            gl.activeTexture(gl.TEXTURE0 + slot) // slot 0
             gl.bindTexture(gl.TEXTURE_2D, texture)
             // out of edge
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             // TODO
+            gl.texImage2D(
+                gl.TEXTURE_2D, // destination slot
+                0, // the mipmap level this data provides; almost always 0
+                gl.RGBA, // how to store it in graphics memory
+                gl.RGBA, // how it is stored in the image object
+                gl.UNSIGNED_BYTE, // size of a single pixel-color in HTML
+                img, // source data
+            )
+            gl.generateMipmap(gl.TEXTURE_2D) // create mipmaps
         })
         img.addEventListener('error', event => {
             console.error("failed to load", value)
@@ -140,7 +149,7 @@ function setupGeomery(geom) {
 /** Draw one frame */
 function draw(seconds) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-    let program = nontextureProgram
+    let program = (useTexture)? textureProgram: nontextureProgram
     gl.useProgram(program)
     gl.bindVertexArray(geom.vao)
     // gl.uniform4fv(program.uniforms.color, IlliniOrange)
@@ -148,7 +157,9 @@ function draw(seconds) {
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
     if (useTexture) {
-        // TODO
+        let bindPoint = gl.getUniformLocation(textureProgram, 'image')
+        gl.uniform1i(bindPoint, slot) // where `slot` is same it was in step 2 above
+
     } else {
         gl.uniform4fv(program.uniforms.color, diffusionColor)
     }
@@ -324,6 +335,7 @@ window.addEventListener('load', async (event) => {
     let nonTextureFs = await fetch('nontexture_fragmentShader.glsl').then(res => res.text())
     let textureFs = await fetch('texture_fragmentShader.glsl').then(res => res.text())
     window.nontextureProgram = compileShader(vs, nonTextureFs)
+    window.textureProgram = compileShader(vs, textureFs)
     gl.enable(gl.DEPTH_TEST)
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
