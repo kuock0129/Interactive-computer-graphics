@@ -23,17 +23,19 @@ function changeMaterial(value) {
         const a = Number('0x' + value.substr(7,2))/255
         setShaderColor(r,g,b,a)
     } else if (/[.](jpg|png)$/.test(value)) {
+        // console.out(/[.](jpg|png)$/.test(value))
         let img = new Image()
         img.crossOrigin = 'anonymous'
         img.src = value
         img.addEventListener('load', event => {
+            useTexture = true
             // change fragment shader
             let texture = gl.createTexture()
             gl.activeTexture(gl.TEXTURE0 + slot) // slot 0
             gl.bindTexture(gl.TEXTURE_2D, texture)
             // out of edge
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
             // TODO
             gl.texImage2D(
                 gl.TEXTURE_2D, // destination slot
@@ -157,7 +159,9 @@ function draw(seconds) {
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
     if (useTexture) {
+        console.log("using texture")
         let bindPoint = gl.getUniformLocation(textureProgram, 'image')
+
         gl.uniform1i(bindPoint, slot) // where `slot` is same it was in step 2 above
 
     } else {
