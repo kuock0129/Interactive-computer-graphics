@@ -1,5 +1,48 @@
-const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
+var diffusionColor = new Float32Array([1,1,1,0.3])
 var animationStarted = false
+var useTexture = false
+var textureProgram
+var nontextureProgram
+
+
+/** Set non-texture color on terrain */
+function setShaderColor(r,g,b,a) {
+    useTexture = false
+    diffusionColor = new Float32Array([r,g,b,a])
+}
+/** Parse material */
+function changeMaterial(value) {
+    if (value == '') {
+        // (1,1,1,0.3) and non-texture
+        setShaderColor(1,1,1,0.3)
+    } else if (/^#[0-9a-f]{8}$/i.test(value)) {
+        const r = Number('0x' + value.substr(1,2))/255
+        const g = Number('0x' + value.substr(3,2))/255
+        const b = Number('0x' + value.substr(5,2))/255
+        const a = Number('0x' + value.substr(7,2))/255
+        setShaderColor(r,g,b,a)
+    } else if (/[.](jpg|png)$/.test(value)) {
+        let img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.src = urlOfImageAsString
+        img.addEventListener('load', event => {
+            // change fragment shader
+            let slot = 0; // or a larger integer if this isn't the only texture
+            let texture = gl.createTexture()
+            gl.activeTexture(gl.TEXTURE0 + slot)
+            gl.bindTexture(gl.TEXTURE_2D, texture)
+            // out of edge
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            // TODO
+        })
+        img.addEventListener('error', event => {
+            console.error("failed to load", value)
+            setShaderColor(1,0,1,0)
+        })
+    }
+}
+
 
 
 function compileShader(vs_source, fs_source) {
@@ -97,13 +140,19 @@ function setupGeomery(geom) {
 /** Draw one frame */
 function draw(seconds) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    let program = nontextureProgram
     gl.useProgram(program)
     gl.bindVertexArray(geom.vao)
     // gl.uniform4fv(program.uniforms.color, IlliniOrange)
     // let m = m4rotX(seconds)
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
-    gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
+    if (useTexture) {
+        // TODO
+    } else {
+        gl.uniform4fv(program.uniforms.color, diffusionColor)
+    }
+
     const eyePosition = [1.3, 0.8, 0.8]
     // light
     let ld = normalize([1,1,2])
@@ -184,7 +233,7 @@ function createFault(positions) {
 function makeGeom(gridSize, faults) {
     const geom = {
         triangles: [],
-        attributes: [[], []] // [positions, normals]
+        attributes: [[], [], []] // [positions, normals, texture coordi]
     };
 
     // Create grid with positions in [-1, 1] range
@@ -235,6 +284,13 @@ function makeGeom(gridSize, faults) {
         geom.attributes[1].push(normal);
     });
 
+    // add texture coordinate
+    for(let i = 0; i < gridSize; i+=1) {
+        for (let j = 0; j < gridSize; j+=1) {
+            geom.attributes[2].push([i/(gridSize-1), j/(gridSize-1)])
+        }
+    }
+
     return geom;
 }
 
@@ -265,13 +321,20 @@ window.addEventListener('load', async (event) => {
     // let vs = document.querySelector('#vert').textContent.trim()
     // let fs = document.querySelector('#frag').textContent.trim()
     let vs = await fetch('vertexShader.glsl').then(res => res.text())
-    let fs = await fetch('fragmentShader.glsl').then(res => res.text())
-    window.program = compileShader(vs,fs)
+    let nonTextureFs = await fetch('nontexture_fragmentShader.glsl').then(res => res.text())
+    let textureFs = await fetch('texture_fragmentShader.glsl').then(res => res.text())
+    window.nontextureProgram = compileShader(vs, nonTextureFs)
     gl.enable(gl.DEPTH_TEST)
     gl.enable(gl.BLEND)
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
     fillScreen()
     window.addEventListener('resize', fillScreen)
+    document.querySelector('#material').addEventListener('change', event=>{
+        const material = document.querySelector('#material').value
+        changeMaterial(material)
+    })
+
+
     document.querySelector('#submit').addEventListener('click', event => {
         const gridSize = Number(document.querySelector('#gridsize').value) || 2
         const faults = Number(document.querySelector('#faults').value) || 0
@@ -286,6 +349,7 @@ window.addEventListener('load', async (event) => {
             return 
          }
         generateTerrain(gridSize, faults)
+        changeMaterial(material)
     })
 
     // // by default generate a 50x50 grid and 50 faults
