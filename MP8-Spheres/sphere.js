@@ -2,6 +2,51 @@ const IlliniBlue = new Float32Array([0.075, 0.16, 0.292, 1])
 const IlliniOrange = new Float32Array([1, 0.373, 0.02, 1])
 const IdentityMatrix = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1])
 
+const numberSpheres = 50
+const cubeWidth = 2
+const sphereToCubeRatio = 0.15
+const sphereRadius = cubeWidth * sphereToCubeRatio / 2
+const RESET_INTERVAL_SECONDS = 3
+var spherePositions = []    // reset every RESET_INTERVAL_SECONDS
+var sphereVelocity = []     // reset every RESET_INTERVAL_SECONDS
+var sphereColors = []
+var lastResetSecond = 0
+
+
+
+/** simulate each sphere's movement */
+function simulatePhysic() {
+    // TODO: create force
+}
+
+
+// init each sphere's color
+function initSimulation() {
+    for (let i = 0; i < numberSpheres; i+=1) {
+        sphereColors.push([Math.random(), Math.random(), Math.random(),1])
+        spherePositions.push([0,0,0])
+        sphereVelocity.push([0,0,0])
+    }
+    resetSimulation()
+}
+// reset each sphere's pos, velocity
+function resetSimulation() {
+    for (let i = 0; i < numberSpheres; i+=1) {
+        // TODO: find collision-free initial states
+        spherePositions[i] = [cubeWidth*Math.random()-1, cubeWidth*Math.random()-1, cubeWidth*Math.random()-1]
+        // sphereVelocity[i] = [Math.random(), Math.random(), Math.random()]
+    }
+}
+
+
+
+
+
+
+
+
+
+
 /**
  * Given the source code of a vertex and fragment shader, compiles them,
  * and returns the linked program.
@@ -109,18 +154,48 @@ function setupGeomery(geom) {
 
 /** Draw one frame */
 function draw(seconds) {
-    gl.clearColor(...IlliniBlue) // f(...[1,2,3]) means f(1,2,3)
+    // gl.clearColor(...IlliniBlue) // f(...[1,2,3]) means f(1,2,3)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     gl.useProgram(program)
 
     let view = m4view([5,7,2], [0,0,0], [0,0,1])
     view = m4mul(p, view)
     // TODO : render spheres
+    gl.bindVertexArray(sphere.vao)
+    const eyePosition = [2.5, 0, 0.5]
+    let v = m4view(eyePosition, [0,0,0], [0,0,1])
+    let scale = m4scale(sphereRadius, sphereRadius, sphereRadius) // the given model rad = 1
+    // light is fixed relative to eye
+    let ld = [1,0.3,0.4]
+    let h = normalize(add(ld, [0,0,1])) // after view matrix, eye direction is [0,0,1]
+    gl.uniform3fv(program.uniforms.lightdir, ld)
+    gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
+    gl.uniform3fv(program.uniforms.halfway, h)
+    gl.uniformMatrix4fv(program.uniforms.p, false, p)
+    for (let i = 0; i < numberSpheres; i+=1) {
+        let mv = m4mul(v, m4trans(...spherePositions[i]), scale)
+        gl.uniformMatrix4fv(program.uniforms.mv, false, mv)
+        gl.uniform4fv(program.uniforms.color, sphereColors[i])
+        gl.drawElements(sphere.mode, sphere.count, sphere.type, 0)
+    }
+
+
 }
+
+
+
 
 /** Compute any time-varying or animated aspects of the scene */
 function tick(milliseconds) {
     let seconds = milliseconds / 1000;
+
+    if (seconds - lastResetSecond >= RESET_INTERVAL_SECONDS) {
+        resetSimulation()
+        lastResetSecond = seconds
+    }
+    simulatePhysic()
+
+
 
     draw(seconds)
     requestAnimationFrame(tick)
@@ -148,8 +223,8 @@ window.addEventListener('load', async (event) => {
         // optional configuration object: see https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext
         {antialias: false, depth:true, preserveDrawingBuffer:true}
     )
-    let vs = await fetch('vs.glsl').then(res => res.text())
-    let fs = await fetch('fs.glsl').then(res => res.text())
+    let vs = await fetch('vertexShader.glsl').then(res => res.text())
+    let fs = await fetch('fragmentShader.glsl').then(res => res.text())
     window.program = compileShader(vs,fs)
     gl.enable(gl.DEPTH_TEST)
     let sphere = await fetch('sphere.json').then(r=>r.json())
@@ -157,5 +232,6 @@ window.addEventListener('load', async (event) => {
     fillScreen()
     window.addEventListener('resize', fillScreen)
     // TODO: set up initial condition
+    initSimulation()
     requestAnimationFrame(tick)
 })
