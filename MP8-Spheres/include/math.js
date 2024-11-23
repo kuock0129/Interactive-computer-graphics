@@ -5,6 +5,7 @@ const mul = (x,s) => x.map(e=>e*s)
 const div = (x,s) => x.map(e=>e/s)
 const dot = (x,y) => x.map((e,i)=>e*y[i]).reduce((s,t)=>s+t)
 const mag = (x) => Math.sqrt(dot(x,x))
+const magDot = (x) => dot(x,x)
 const normalize = (x) => div(x,mag(x))
 const cross = (x,y) => x.length == 2 ?
   x[0]*y[1]-x[1]*y[0] :
