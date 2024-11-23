@@ -9,7 +9,7 @@ const sphereToCubeRatio = 0.15
 const sphereRadius = cubeWidth * sphereToCubeRatio / 2
 const RESET_INTERVAL_SECONDS = 15
 const ELASTICITY = 0.9
-const G = 9.80665
+const G = 3 // self-defined value
 const MAX_V = 3
 
 var spherePositions = []    // reset every RESET_INTERVAL_SECONDS
@@ -22,26 +22,31 @@ var previousSecond = 0
 
 /** simulate each sphere's movement */
 function simulatePhysic(deltaSeconds) {
-    // TODO: create force
-    newPositions= [...spherePositions]
-    newVelocity = [...sphereVelocity]
+    // TODO: create forces
     for (let i = 0; i < numberSpheres; i += 1) {
-        newPositions[i] = add(spherePositions[i], mul(sphereVelocity[i],deltaSeconds))
+        spherePositions[i] = add(spherePositions[i], mul(sphereVelocity[i],deltaSeconds))
+
         // handle velocity
         for (let axis = 0; axis < 3; axis += 1) {
             if ((spherePositions[i][axis] - sphereRadius < -cubeWall) &&
                 (sphereVelocity[i][axis] < 0) // torward wall
             ) {
-                newVelocity[i][axis] = -sphereVelocity[i][axis]*ELASTICITY
-                newPositions[i][axis] = -cubeWall + sphereRadius
+                sphereVelocity[i][axis] = -sphereVelocity[i][axis]*ELASTICITY
+                spherePositions[i][axis] = -cubeWall + sphereRadius
             }
             if ((spherePositions[i][axis] + sphereRadius > cubeWall) &&
                 (sphereVelocity[i][axis] > 0) // torward wall
             ) {
-                newVelocity[i][axis] = -sphereVelocity[i][axis]*ELASTICITY
-                newPositions[i][axis] = cubeWall - sphereRadius
+                sphereVelocity[i][axis] = -sphereVelocity[i][axis]*ELASTICITY
+                spherePositions[i][axis] = cubeWall - sphereRadius
             }
         }
+
+    }
+    newVelocity = [...sphereVelocity]
+    for (let i = 0; i < numberSpheres; i += 1) {
+
+
         // handle collision
         for (let j = 0; j < i; j += 1) {
             const displacement = sub(spherePositions[j], spherePositions[i])
@@ -64,7 +69,7 @@ function simulatePhysic(deltaSeconds) {
         newVelocity[i][Z_AXIS] -= G * deltaSeconds
     }
     sphereVelocity = newVelocity
-    spherePositions = newPositions
+    // spherePositions = newPositions
 }
 
 
