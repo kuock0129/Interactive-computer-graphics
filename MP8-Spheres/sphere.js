@@ -2,99 +2,101 @@ const IlliniBlue = new Float32Array([0.075, 0.16, 0.292, 1])
 const IlliniOrange = new Float32Array([1, 0.373, 0.02, 1])
 const IdentityMatrix = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1])
 
-const numberSpheres = 50
-const cubeWidth = 2
-const cubeWall = cubeWidth / 2
-const sphereToCubeRatio = 0.15
-const sphereRadius = cubeWidth * sphereToCubeRatio / 2
-const RESET_INTERVAL_SECONDS = 15
-const ELASTICITY = 0.9
-const G = 3 // self-defined value
-const MAX_V = 3
+const SimulationConfig = {
+    numberSpheres: 50,
+    cubeWidth: 2,
+    cubeWall: 2 / 2,
+    sphereToCubeRatio: 0.15,
+    sphereRadius: (2 * 0.15) / 2,
+    RESET_INTERVAL_SECONDS: 15,
+    ELASTICITY: 0.9,
+    G: 9.8,
+    MAX_V: 3
+};
 
-var spherePositions = []    // reset every RESET_INTERVAL_SECONDS
-var sphereVelocity = []     // reset every RESET_INTERVAL_SECONDS
-var sphereColors = []
-var lastResetSecond = 0
-var previousSecond = 0
-
-
+var SimulationState = {
+    spherePositions: [],    // reset every RESET_INTERVAL_SECONDS
+    sphereVelocity: [],     // reset every RESET_INTERVAL_SECONDS
+    sphereColors: [],
+    lastResetSecond: 0,
+    previousSecond: 0
+};
 
 /** simulate each sphere's movement */
 function simulatePhysic(deltaSeconds) {
-    // TODO: create forces
+    const { numberSpheres, cubeWall, sphereRadius, ELASTICITY, G } = SimulationConfig;
+    const { spherePositions, sphereVelocity } = SimulationState;
+
     for (let i = 0; i < numberSpheres; i += 1) {
-        spherePositions[i] = add(spherePositions[i], mul(sphereVelocity[i],deltaSeconds))
+        spherePositions[i] = add(spherePositions[i], mul(sphereVelocity[i], deltaSeconds));
 
         // handle velocity
         for (let axis = 0; axis < 3; axis += 1) {
             if ((spherePositions[i][axis] - sphereRadius < -cubeWall) &&
-                (sphereVelocity[i][axis] < 0) // torward wall
+                (sphereVelocity[i][axis] < 0) // toward wall
             ) {
-                sphereVelocity[i][axis] = -sphereVelocity[i][axis]*ELASTICITY
-                spherePositions[i][axis] = -cubeWall + sphereRadius
+                sphereVelocity[i][axis] = -sphereVelocity[i][axis] * ELASTICITY;
+                spherePositions[i][axis] = -cubeWall + sphereRadius;
             }
             if ((spherePositions[i][axis] + sphereRadius > cubeWall) &&
-                (sphereVelocity[i][axis] > 0) // torward wall
+                (sphereVelocity[i][axis] > 0) // toward wall
             ) {
-                sphereVelocity[i][axis] = -sphereVelocity[i][axis]*ELASTICITY
-                spherePositions[i][axis] = cubeWall - sphereRadius
+                sphereVelocity[i][axis] = -sphereVelocity[i][axis] * ELASTICITY;
+                spherePositions[i][axis] = cubeWall - sphereRadius;
             }
         }
-
     }
-    newVelocity = [...sphereVelocity]
+
+    let newVelocity = [...sphereVelocity];
     for (let i = 0; i < numberSpheres; i += 1) {
-
-
         // handle collision
         for (let j = 0; j < i; j += 1) {
-            const displacement = sub(spherePositions[j], spherePositions[i])
-            const d2 = magDot(displacement)
-            const ddoti = dot(displacement, sphereVelocity[i])
-            const ddotj = dot(displacement, sphereVelocity[j])
+            const displacement = sub(spherePositions[j], spherePositions[i]);
+            const d2 = magDot(displacement);
+            const ddoti = dot(displacement, sphereVelocity[i]);
+            const ddotj = dot(displacement, sphereVelocity[j]);
             if ((d2 < 4 * sphereRadius * sphereRadius) &&
                 (dot(displacement, sub(sphereVelocity[i], sphereVelocity[j])) > 0)
             ) {
-                const si = mul(displacement, ddoti / d2)
-                const sj = mul(displacement, ddotj / d2)
-                const s = sub(si, sj)
-                const bounce = mul(s, 0.5 * (1 + ELASTICITY)) // each sphere has the same mass
-                newVelocity[i] = sub(newVelocity[i], bounce)
-                newVelocity[j] = add(newVelocity[j], bounce)
+                const si = mul(displacement, ddoti / d2);
+                const sj = mul(displacement, ddotj / d2);
+                const s = sub(si, sj);
+                const bounce = mul(s, 0.5 * (1 + ELASTICITY)); // each sphere has the same mass
+                newVelocity[i] = sub(newVelocity[i], bounce);
+                newVelocity[j] = add(newVelocity[j], bounce);
             }
         }
         // create gravity
-        const Z_AXIS = 2
-        newVelocity[i][Z_AXIS] -= G * deltaSeconds
+        const Z_AXIS = 2;
+        newVelocity[i][Z_AXIS] -= G * deltaSeconds;
     }
-    sphereVelocity = newVelocity
-    // spherePositions = newPositions
+    SimulationState.sphereVelocity = newVelocity;
 }
 
-
-
-
-
-// init each sphere's color
+/** init each sphere's color */
 function initSimulation() {
-    for (let i = 0; i < numberSpheres; i+=1) {
-        sphereColors.push([Math.random(), Math.random(), Math.random(),1])
-        spherePositions.push([0,0,0])
-        sphereVelocity.push([0,0,0])
+    const { numberSpheres } = SimulationConfig;
+    const { sphereColors, spherePositions, sphereVelocity } = SimulationState;
+
+    for (let i = 0; i < numberSpheres; i += 1) {
+        sphereColors.push([Math.random(), Math.random(), Math.random(), 1]);
+        spherePositions.push([0, 0, 0]);
+        sphereVelocity.push([0, 0, 0]);
     }
-    resetSimulation()
+    resetSimulation();
 }
-// reset each sphere's pos, velocity
+
+/** reset each sphere's pos, velocity */
 function resetSimulation() {
-    for (let i = 0; i < numberSpheres; i+=1) {
+    const { numberSpheres, cubeWidth, MAX_V } = SimulationConfig;
+    const { spherePositions, sphereVelocity } = SimulationState;
+
+    for (let i = 0; i < numberSpheres; i += 1) {
         // TODO: find collision-free initial states
-        spherePositions[i] = [cubeWidth*Math.random()-1, cubeWidth*Math.random()-1, cubeWidth*Math.random()-1]
-        sphereVelocity[i] = mul([Math.random()-1, Math.random()-1, Math.random()-1], MAX_V)
+        spherePositions[i] = [cubeWidth * Math.random() - 1, cubeWidth * Math.random() - 1, cubeWidth * Math.random() - 1];
+        sphereVelocity[i] = mul([Math.random() - 1, Math.random() - 1, Math.random() - 1], MAX_V);
     }
 }
-
-
 
 
 
@@ -210,6 +212,9 @@ function setupGeomery(geom) {
 
 /** Draw one frame */
 function draw(seconds) {
+    const { numberSpheres, sphereRadius } = SimulationConfig;
+    const { spherePositions, sphereColors } = SimulationState;
+    
     // gl.clearColor(...IlliniBlue) // f(...[1,2,3]) means f(1,2,3)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     gl.useProgram(program)
@@ -245,14 +250,14 @@ function draw(seconds) {
 function tick(milliseconds) {
     let seconds = milliseconds / 1000;
 
-    if (seconds - lastResetSecond >= RESET_INTERVAL_SECONDS) {
+    if (seconds - SimulationState.lastResetSecond >= SimulationConfig.RESET_INTERVAL_SECONDS) {
         resetSimulation()
-        lastResetSecond = seconds
+        SimulationState.lastResetSecond = seconds
     }
 
 
-    const deltaSeconds = seconds - previousSecond
-    previousSecond = seconds
+    const deltaSeconds = seconds - SimulationState.previousSecond
+    SimulationState.previousSecond = seconds
     simulatePhysic(deltaSeconds)
 
 
