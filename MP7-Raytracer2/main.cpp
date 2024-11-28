@@ -415,6 +415,8 @@ public:
         Scene scene;
         Camera camera;
         vector<Material*> materials;
+        bool do_exposure = false;
+        float exposure;
 
 
         Config() {
@@ -450,6 +452,8 @@ public:
                 parseColor(command, config);
             else if (command[0] == "sun")
                 parseSun(command, config);
+            else if (command[0] == "expose")
+                parseExposure(command, config);
         }
         return 0;
     }
@@ -556,12 +560,22 @@ private:
         config.scene.addLight(nlight);
         return 0;
     }
+
+
+    int parseExposure(const vector<string> &command, Config &config) {
+        float v = stof(command[1]);
+        cout << "exposure" << v << endl;
+        config.do_exposure = true;
+        config.exposure = v;
+        return 0;
+    }
 };
 
 
 
-
-
+static float expose(float l, float v) {
+    return 1.0f - exp(-v*l);
+}
 
 
 void printDebugInfo(const Ray& ray, const Hit& hit, const Vector3f& dir_to_light, 
@@ -648,20 +662,25 @@ int main(int argc, char* argv[]) {
                     Vector3f p_hit = ray.pointAtParameter(hit.t);
                     lights[l]->getIllumination(p_hit,
                         dir_to_light, light_color, d);
-                        
                     Ray secondary(p_hit, dir_to_light);
                     float epsilon = 0.0001f; // magic number
                     Hit second_hit;
                     if (scene.intersect(secondary, second_hit, epsilon)) {
                         light_color = Vector3f(0,0,0);
                     }
-
                     // rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     if (i == 82 && j == 70){
                         printDebugInfo(ray, hit, dir_to_light, light_color, rgb);
                     }
                 }
+                // do exposure
+                if (config.do_exposure) {
+                    rgb[0] = expose(rgb[0], config.exposure);
+                    rgb[1] = expose(rgb[1], config.exposure);
+                    rgb[2] = expose(rgb[2], config.exposure);
+                }
+                
                 pixel_color = Vector4f(rgb, 1.0f);
             }
 
