@@ -236,10 +236,16 @@ public:
     Vector3f Shade(const Ray& ray, const Hit& hit,
         const Vector3f& dir_to_light, const Vector3f& light_color) {
         Vector3f n = hit.normal;
+        // Make sure normal faces toward the viewer
         if (Vector3f::dot(n, ray.getDirection()) > 0) {
             n.negate();
         }
-        float lamport = std::max(Vector3f::dot(n, dir_to_light), 0.0f);
+        // Calculate lighting
+        // float lamport = std::max(Vector3f::dot(n, dir_to_light), 0.0f);
+
+        // Don't clamp the dot product to 0, let it be negative
+        float n_dot_l = Vector3f::dot(n, dir_to_light);
+        float lamport = n_dot_l;
         Vector3f ret = (light_color * diffusion_color) * lamport;
         ret.clamp(0, 1);
         return ret;
@@ -365,10 +371,10 @@ public:
 
         // Convert linear color to 8-bit per channel
         pixel_t& pixel = _image[y][x];
-        pixel.r = linear_2char(color[0]);
-        pixel.g = linear_2char(color[1]);
-        pixel.b = linear_2char(color[2]);
-        pixel.a = linear_2char(color[3]);
+        pixel.r = linear_2_sRGB(color[0]);
+        pixel.g = linear_2_sRGB(color[1]);
+        pixel.b = linear_2_sRGB(color[2]);
+        pixel.a = linear_2_sRGB(color[3]);
     }
 
     void exportPNG(const char* filename) {
@@ -379,6 +385,18 @@ private:
     Image _image;
     int _width, _height;
 
+    // Linear to sRGB conversion following the official formula
+    static inline uc linear_2_sRGB(float linear) {
+        float sRGB;
+        if (linear <= 0.0031308f) {
+            sRGB = 12.92f * linear;
+        } else {
+            sRGB = 1.055f * pow(linear, 1.0f/2.4f) - 0.055f;
+        }
+        return round(sRGB * 255.0f);
+    }
+
+    // For alpha channel, keep linear conversion
     static inline uc linear_2char(float color) {
         return round(color * 255);
     }
@@ -562,16 +580,30 @@ void printDebugInfo(const Ray& ray, const Hit& hit, const Vector3f& dir_to_light
     std::cout << "Sun direction: " << dir_to_light << std::endl;
     
     // Shading calculations
-    float lambert = std::max(Vector3f::dot(hit.normal, dir_to_light), 0.0f);
+    // Shading calculations - show raw dot product before clamping
+    float lambert = Vector3f::dot(hit.normal, dir_to_light);
     std::cout << "Lambert dot product: " << lambert << std::endl;
+    
     
     // Color calculations
     std::cout << "Linear color: " << final_color << std::endl;
+
+    // Proper sRGB conversion
+    auto linear_2_sRGB = [](float linear) {
+        float sRGB;
+        if (linear <= 0.0031308f) {
+            sRGB = 12.92f * linear;
+        } else {
+            sRGB = 1.055f * pow(linear, 1.0f/2.4f) - 0.055f;
+        }
+        // cout << sRGB << endl;
+        return sRGB * 255.0f;
+    };
     
     // sRGB conversion (assuming linear to sRGB conversion)
-    int r = round(final_color.x * 255);
-    int g = round(final_color.y * 255);
-    int b = round(final_color.z * 255);
+    int r = linear_2_sRGB(final_color.x);
+    int g = linear_2_sRGB(final_color.y);
+    int b = linear_2_sRGB(final_color.z);
     std::cout << "sRGB color: (" << r << ", " << g << ", " << b << ")" << std::endl;
 }
 
@@ -617,7 +649,7 @@ int main(int argc, char* argv[]) {
                         dir_to_light, light_color, d);
                     // rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
-                    if (i == 55 && j == 45){
+                    if (i == 82 && j == 70){
                         printDebugInfo(ray, hit, dir_to_light, light_color, rgb);
                     }
                 }
