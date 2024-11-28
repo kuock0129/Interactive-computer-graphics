@@ -119,6 +119,38 @@ public:
 using Color = Vector4f;
 
 
+
+
+// Light base class
+class Light {
+public:
+    Light() {}
+    virtual ~Light() {}
+    virtual void getIllumination(const Vector3f& p, Vector3f& dir,
+        Vector3f& col, float& distanceToLight) const = 0;
+};
+
+// SunLight derived class
+class SunLight : public Light {
+public:
+    SunLight(const Vector3f& d, const Vector3f& c) : dir_to_light(d), color(c) {}
+    SunLight() = delete;
+    
+    void getIllumination(const Vector3f& p, Vector3f& dir,
+        Vector3f& col, float& distanceToLight) const override {
+        dir = dir_to_light;
+        col = color;
+        distanceToLight = -1;
+    }
+
+private:
+    Vector3f dir_to_light;
+    Vector3f color;
+};
+
+
+
+
 // Ray class
 class Ray {
 public:
@@ -153,6 +185,8 @@ struct Hit {
     Color color;
     Vector3f normal;
 };
+
+
 
 // Sphere class
 class Sphere {
@@ -193,6 +227,10 @@ private:
     // Color color;
 };
 
+
+
+
+
 // Scene class
 class Scene {
 public:
@@ -200,6 +238,14 @@ public:
         // cout << "Adding sphere: " << sphere << endl;
         printf("Adding sphere: %f %f %f %f\n", sphere.radius, sphere.center.x, sphere.center.y, sphere.center.z);
         objects.push_back(std::move(sphere));
+    }
+
+    void addLight(Light* light) {
+        lights.push_back(light);
+    }
+
+    vector<Light*>& getLights() {
+        return lights;
     }
 
     bool intersect(const Ray& ray, Hit& hit, float tmin = 0) {
@@ -218,6 +264,7 @@ public:
 
 private:
     vector<Sphere> objects;
+    vector<Light*> lights;
 };
 
 // Camera class
@@ -297,6 +344,8 @@ public:
                 parseSphere(command, config, color_stat);
             else if (command[0] == "color")
                 parseColor(command, color_stat);
+            else if (command[0] == "sun")
+                parseSun(command, config);
         }
         return 0;
     }
@@ -344,7 +393,21 @@ private:
             nums.push_back(stof(tokens[i]));
         }
         return nums;
+    }   
+
+    // Config
+    Config::Config() {
+        // create default color
+        Material *default_material = new Material(1,1,1);
+        materials.push_back(default_material);
     }
+    Config::~Config() {
+        for (size_t i = 0; i < materials.size(); i++) {
+            delete materials[i];
+            materials[i] = nullptr;
+        }
+    }
+
 
     int parsePng(const vector<string>& command, Config& config) {
         const int PNG_CMD_SIZE = 4;
@@ -374,6 +437,22 @@ private:
         color = Color(data[0], data[1], data[2], 1.0f);
         return 0;
     }
+
+    int parseSun(const vector<string>& command, Config& config) {
+        const int SUN_CMD_SIZE = 7;  // Command + 3 direction values + 3 color values
+        if (command.size() != SUN_CMD_SIZE) return -1;
+
+        // Parse direction vector
+        Vector3f direction(stof(command[1]), stof(command[2]), stof(command[3]));
+        direction.normalize();
+
+        // Parse color vector
+        Vector3f color(stof(command[4]), stof(command[5]), stof(command[6]));
+        
+        SunLight* sunLight = new SunLight(direction, color);
+        config.scene.addLight(sunLight);
+        return 0;
+    }
 };
 
 int main(int argc, char* argv[]) {
@@ -401,7 +480,20 @@ int main(int argc, char* argv[]) {
 
             Vector4f pixel_color(0, 0, 0, 0);
             if (scene.intersect(ray, hit)) {
-                pixel_color = hit.color;
+
+                // 
+                vector<Light*>& lights = scene.getLights();
+                Vector3f rgb;
+                for (size_t l = 0; l < lights.size(); l++) {
+                    Vector3f light_color;
+                    Vector3f dir_to_light;
+                    float d;
+                    lights[l]->getIllumination(ray.pointAtParameter(hit.t),
+                        dir_to_light, light_color, d);
+                    // rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
+                    rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
+                }
+                pixel_color = Vector4f(rgb, 1.0f);
             }
 
             image.setPixel(i, j, pixel_color);
