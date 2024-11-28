@@ -13,8 +13,8 @@ using uc = unsigned char;
 // Forward declarations to resolve circular dependencies
 class Vector3f;
 class Vector4f;
+class Material;
 
-// Vector3f class with integrated operations
 class Vector3f {
 public:
     // Constructors
@@ -39,9 +39,35 @@ public:
         return Vector3f(x - other.x, y - other.y, z - other.z);
     }
 
+    Vector3f& operator+=(const Vector3f& other) {
+        x += other.x;
+        y += other.y;
+        z += other.z;
+        return *this;
+    }
+
     // Scalar multiplication
     Vector3f operator*(float scalar) const {
         return Vector3f(x * scalar, y * scalar, z * scalar);
+    }
+
+    // Vector multiplication
+    Vector3f operator*(const Vector3f& other) const {
+        return Vector3f(x * other.x, y * other.y, z * other.z);
+    }
+
+    // Negate vector
+    void negate() {
+        x = -x;
+        y = -y;
+        z = -z;
+    }
+
+    // Clamp values
+    void clamp(float min_val, float max_val) {
+        x = std::max(min_val, std::min(max_val, x));
+        y = std::max(min_val, std::min(max_val, y));
+        z = std::max(min_val, std::min(max_val, z));
     }
 
     // Dot product (static method)
@@ -78,6 +104,8 @@ public:
     // Member variables
     float x, y, z;
 };
+
+
 
 // Vector4f class with integrated operations
 class Vector4f {
@@ -117,6 +145,19 @@ public:
 
 // Use Vector4f as Color
 using Color = Vector4f;
+using Color3 = Vector3f;
+using Color4 = Vector4f;
+
+
+
+
+
+// Modified Hit struct
+struct Hit {
+    float t;
+    Material* material;
+    Vector3f normal;
+};
 
 
 
@@ -179,24 +220,51 @@ private:
     int depth;
 };
 
-// Hit struct
-struct Hit {
-    float t;
-    Color color;
-    Vector3f normal;
+
+
+// Material class definition
+class Material {
+public:
+    Material(float r = 0, float g = 0, float b = 0) 
+        : diffusion_color(r, g, b), use_texture(false) {}
+    Material(const Color3& color) 
+        : Material(color[0], color[1], color[2]) {}
+    ~Material() {}
+
+    Vector3f& getDiffusionColor() { return diffusion_color; }
+
+    Vector3f Shade(const Ray& ray, const Hit& hit,
+        const Vector3f& dir_to_light, const Vector3f& light_color) {
+        Vector3f n = hit.normal;
+        if (Vector3f::dot(n, ray.getDirection()) > 0) {
+            n.negate();
+        }
+        float lamport = std::max(Vector3f::dot(n, dir_to_light), 0.0f);
+        Vector3f ret = (light_color * diffusion_color) * lamport;
+        ret.clamp(0, 1);
+        return ret;
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const Material& mat) {
+        os << mat.diffusion_color[0] << ',' << mat.diffusion_color[1] << ',' << mat.diffusion_color[2];
+        return os;
+    }
+
+private:
+    Color3 diffusion_color;
+    bool use_texture;
 };
 
 
-
-// Sphere class
+// Modified Sphere class
 class Sphere {
 public:
-    Sphere(float rad, const Vector3f& cen, const Color& c)
-        : radius(rad), center(cen), color(c) {}
+    Sphere(float rad, const Vector3f& cen, Material* mat)
+        : radius(rad), center(cen), material(mat) {}
 
     float radius;
     Vector3f center;
-    Color color;
+    Material* material;
 
     bool intersect(const Ray& ray, Hit& hit, float tmin = 0) {
         float r2 = radius * radius;
@@ -215,12 +283,11 @@ public:
         if (t < tmin) return false;
 
         hit.t = t;
-        hit.color = color;
+        hit.material = material;
         hit.normal = ray.pointAtParameter(t) - center;
         hit.normal.normalize();
         return true;
     }
-
 private:
     // float radius;
     // Vector3f center;
@@ -274,6 +341,7 @@ public:
 
     Ray generateRay(float sx, float sy) {
         Vector3f dir = forward + right * sx + up * sy;
+        dir.normalize();  // Normalize the direction vector
         return Ray(eye, dir, 0);
     }
 private:
@@ -322,17 +390,35 @@ private:
 class ConfigParser {
 public:
     struct Config {
+        // Config();
+        // ~Config();
         string name;
         int w, h;
         Scene scene;
         Camera camera;
+        vector<Material*> materials;
+
+
+        Config() {
+            // create default color
+            Material* default_material = new Material(1, 1, 1);
+            materials.push_back(default_material);
+        }
+
+        ~Config() {
+            for (size_t i = 0; i < materials.size(); i++) {
+                delete materials[i];
+                materials[i] = nullptr;
+            }
+        }
+
     };
 
     int readConfigFromFile(char* filename, Config& config) {
         ifstream fin(filename);
         string line;
 
-        Color color_stat(0, 0, 0, 1);
+        // Color color_stat(0, 0, 0, 1);
         while (getline(fin, line)) {
             vector<string> command;
             parseLineToCommand(line, command);
@@ -341,9 +427,9 @@ public:
             if (command[0] == "png")
                 parsePng(command, config);
             else if (command[0] == "sphere")
-                parseSphere(command, config, color_stat);
+                parseSphere(command, config);
             else if (command[0] == "color")
-                parseColor(command, color_stat);
+                parseColor(command, config);
             else if (command[0] == "sun")
                 parseSun(command, config);
         }
@@ -395,19 +481,20 @@ private:
         return nums;
     }   
 
-    // Config
-    Config::Config() {
-        // create default color
-        Material *default_material = new Material(1,1,1);
-        materials.push_back(default_material);
-    }
-    Config::~Config() {
-        for (size_t i = 0; i < materials.size(); i++) {
-            delete materials[i];
-            materials[i] = nullptr;
-        }
-    }
 
+    // // Config
+    // Config::Config() {
+    //     // create default color
+    //     Material *default_material = new Material(1,1,1);
+    //     materials.push_back(default_material);
+    // }
+    // Config::~Config() {
+    //     for (size_t i = 0; i < materials.size(); i++) {
+    //         delete materials[i];
+    //         materials[i] = nullptr;
+    //     }
+    // }
+    
 
     int parsePng(const vector<string>& command, Config& config) {
         const int PNG_CMD_SIZE = 4;
@@ -422,38 +509,76 @@ private:
         return 0;
     }
 
-    int parseSphere(const vector<string>& command, Config& config, Color& color_stat) {
+    int parseSphere(const vector<string> &command, Config &config) {
         const int SPHERE_CMD_SIZE = 5;
         if (command.size() != SPHERE_CMD_SIZE) return -1;
 
         vector<float> data = readFloatArray(command, 1, 4);
-        Sphere sphere(data[3], Vector3f(data[0], data[1], data[2]), color_stat);
+        // Sphere sphere(data[3], Vector3f(data[0], data[1], data[2]), color_stat);
+        Material *mat = config.materials.back();
+        Sphere sphere(data[3], Vector3f(data[0],data[1],data[2]), mat);
         config.scene.addSphere(std::move(sphere));
         return 0;
     }
 
-    int parseColor(const vector<string>& command, Color& color) {
+    int parseColor(const vector<string>& command, Config &config) {
         vector<float> data = readFloatArray(command, 1, 3);
-        color = Color(data[0], data[1], data[2], 1.0f);
+        // color = Color(data[0], data[1], data[2], 1.0f);
+        Material *mat = new Material(data[0], data[1], data[2]);
+        config.materials.push_back(mat);
+ 
         return 0;
     }
 
     int parseSun(const vector<string>& command, Config& config) {
-        const int SUN_CMD_SIZE = 7;  // Command + 3 direction values + 3 color values
-        if (command.size() != SUN_CMD_SIZE) return -1;
-
-        // Parse direction vector
-        Vector3f direction(stof(command[1]), stof(command[2]), stof(command[3]));
-        direction.normalize();
-
-        // Parse color vector
-        Vector3f color(stof(command[4]), stof(command[5]), stof(command[6]));
-        
-        SunLight* sunLight = new SunLight(direction, color);
-        config.scene.addLight(sunLight);
+        vector<float> data = readFloatArray(command, 1, 3); // direction
+        Vector3f dir_to_light = Vector3f(data[0], data[1], data[2]);
+        dir_to_light.normalize();
+        Light *nlight = new SunLight(dir_to_light, config.materials.back()->getDiffusionColor());
+        config.scene.addLight(nlight);
         return 0;
     }
 };
+
+
+
+
+
+
+
+void printDebugInfo(const Ray& ray, const Hit& hit, const Vector3f& dir_to_light, 
+                    const Vector3f& light_color, const Vector3f& final_color) {
+    // Ray information
+    std::cout << "Ray origin: " << ray.getOrigin() << std::endl;
+    std::cout << "Ray direction: " << ray.getDirection() << std::endl;
+    
+    // Intersection information
+    std::cout << "Intersection depth: " << hit.t << std::endl;
+    Vector3f intersectionPoint = ray.pointAtParameter(hit.t);
+    std::cout << "Intersection point: " << intersectionPoint << std::endl;
+    std::cout << "Surface normal: " << hit.normal << std::endl;
+    
+    // Light information
+    std::cout << "Sun direction: " << dir_to_light << std::endl;
+    
+    // Shading calculations
+    float lambert = std::max(Vector3f::dot(hit.normal, dir_to_light), 0.0f);
+    std::cout << "Lambert dot product: " << lambert << std::endl;
+    
+    // Color calculations
+    std::cout << "Linear color: " << final_color << std::endl;
+    
+    // sRGB conversion (assuming linear to sRGB conversion)
+    int r = round(final_color.x * 255);
+    int g = round(final_color.y * 255);
+    int b = round(final_color.z * 255);
+    std::cout << "sRGB color: (" << r << ", " << g << ", " << b << ")" << std::endl;
+}
+
+
+
+
+
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -478,7 +603,7 @@ int main(int argc, char* argv[]) {
             Ray ray = camera.generateRay(sx, sy);
             Hit hit;
 
-            Vector4f pixel_color(0, 0, 0, 0);
+            Color4 pixel_color(0, 0, 0, 0);
             if (scene.intersect(ray, hit)) {
 
                 // 
@@ -492,6 +617,9 @@ int main(int argc, char* argv[]) {
                         dir_to_light, light_color, d);
                     // rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
+                    if (i == 55 && j == 45){
+                        printDebugInfo(ray, hit, dir_to_light, light_color, rgb);
+                    }
                 }
                 pixel_color = Vector4f(rgb, 1.0f);
             }
