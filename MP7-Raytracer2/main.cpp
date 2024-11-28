@@ -645,8 +645,17 @@ int main(int argc, char* argv[]) {
                     Vector3f light_color;
                     Vector3f dir_to_light;
                     float d;
-                    lights[l]->getIllumination(ray.pointAtParameter(hit.t),
+                    Vector3f p_hit = ray.pointAtParameter(hit.t);
+                    lights[l]->getIllumination(p_hit,
                         dir_to_light, light_color, d);
+                        
+                    Ray secondary(p_hit, dir_to_light);
+                    float epsilon = 0.0001f; // magic number
+                    Hit second_hit;
+                    if (scene.intersect(secondary, second_hit, epsilon)) {
+                        light_color = Vector3f(0,0,0);
+                    }
+
                     // rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     if (i == 82 && j == 70){
