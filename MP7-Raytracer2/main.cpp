@@ -3,6 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <cassert>
+#include <algorithm>
 #include <cstring>
 
 #include "uselibpng.h"  // Include the custom PNG library header
@@ -247,7 +248,8 @@ public:
         float n_dot_l = Vector3f::dot(n, dir_to_light);
         float lamport = n_dot_l;
         Vector3f ret = (light_color * diffusion_color) * lamport;
-        ret.clamp(0, 1);
+        // value may not be in the range [0, 1]
+        // ret.clamp(0, 1);
         return ret;
     }
 
@@ -393,11 +395,14 @@ private:
         } else {
             sRGB = 1.055f * pow(linear, 1.0f/2.4f) - 0.055f;
         }
+        // do clamp here
+        sRGB = max(0.0f, min(1.0f, sRGB));
         return round(sRGB * 255.0f);
     }
 
     // For alpha channel, keep linear conversion
     static inline uc linear_2char(float color) {
+        color = max(0.0f, min(1.0f, color));
         return round(color * 255);
     }
 };
@@ -600,6 +605,7 @@ void printDebugInfo(const Ray& ray, const Hit& hit, const Vector3f& dir_to_light
     
     
     // Color calculations
+    // final_color = max(0.0f, min(1.0f, final_color));
     std::cout << "Linear color: " << final_color << std::endl;
 
     // Proper sRGB conversion
@@ -611,6 +617,7 @@ void printDebugInfo(const Ray& ray, const Hit& hit, const Vector3f& dir_to_light
             sRGB = 1.055f * pow(linear, 1.0f/2.4f) - 0.055f;
         }
         // cout << sRGB << endl;
+        sRGB = max(0.0f, min(1.0f, sRGB));
         return sRGB * 255.0f;
     };
     
@@ -671,6 +678,7 @@ int main(int argc, char* argv[]) {
                     // rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);
                     if (i == 82 && j == 70){
+                        cout << "pixel:" << i <<" "<< j<<endl;
                         printDebugInfo(ray, hit, dir_to_light, light_color, rgb);
                     }
                 }
@@ -680,7 +688,7 @@ int main(int argc, char* argv[]) {
                     rgb[1] = expose(rgb[1], config.exposure);
                     rgb[2] = expose(rgb[2], config.exposure);
                 }
-                
+
                 pixel_color = Vector4f(rgb, 1.0f);
             }
 
