@@ -16,8 +16,15 @@ class Vector3f;
 class Vector4f;
 class Material;
 
+
 class Vector3f {
 public:
+    // Static member variables for common vectors
+    static const Vector3f ZERO;
+    static const Vector3f FORWARD;
+    static const Vector3f RIGHT;
+    static const Vector3f UP;
+
     // Constructors
     Vector3f() : x(0), y(0), z(0) {}
     Vector3f(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
@@ -55,6 +62,15 @@ public:
     // Vector multiplication
     Vector3f operator*(const Vector3f& other) const {
         return Vector3f(x * other.x, y * other.y, z * other.z);
+    }
+
+    // Add cross product static method
+    static Vector3f cross(const Vector3f& a, const Vector3f& b) {
+        return Vector3f(
+            a.y * b.z - a.z * b.y,
+            a.z * b.x - a.x * b.z,
+            a.x * b.y - a.y * b.x
+        );
     }
 
     // Negate vector
@@ -148,6 +164,11 @@ public:
 using Color = Vector4f;
 using Color3 = Vector3f;
 using Color4 = Vector4f;
+
+const Vector3f Vector3f::ZERO(0.0f, 0.0f, 0.0f);
+const Vector3f Vector3f::FORWARD(0.0f, 0.0f, -1.0f);
+const Vector3f Vector3f::RIGHT(1.0f, 0.0f, 0.0f);
+const Vector3f Vector3f::UP(0.0f, 1.0f, 0.0f);
 
 
 
@@ -311,7 +332,7 @@ class Scene {
 public:
     void addSphere(Sphere&& sphere) {
         // cout << "Adding sphere: " << sphere << endl;
-        printf("Adding sphere: %f %f %f %f\n", sphere.radius, sphere.center.x, sphere.center.y, sphere.center.z);
+        printf("Adding sphere: %f %f %f %f\n", sphere.center.x, sphere.center.y, sphere.center.z, sphere.radius);
         objects.push_back(std::move(sphere));
     }
 
@@ -342,22 +363,53 @@ private:
     vector<Light*> lights;
 };
 
+
+
+
+
+
 // Camera class
 class Camera {
 public:
-    Camera() : eye(0, 0, 0), forward(0, 0, -1), right(1, 0, 0), up(0, 1, 0) {}
+    // Camera() : eye(0, 0, 0), forward(0, 0, -1), right(1, 0, 0), up(0, 1, 0) {}
+
+    Camera(const Vector3f &e, const Vector3f &f, const Vector3f &u):
+        eye(e), 
+        forward(f) {
+            right = Vector3f::cross(f, u);//.normalized();
+            up = Vector3f::cross(right, f);//.normalized();
+            right.normalize();
+            up.normalize();
+        }
 
     Ray generateRay(float sx, float sy) {
         Vector3f dir = forward + right * sx + up * sy;
         dir.normalize();  // Normalize the direction vector
         return Ray(eye, dir, 0);
     }
+
+    void debugCameraVectors() const {
+        // Print normalized vectors
+        cout << "Forward (normalized): " << forward << endl;
+        cout << "Up (normalized): " << up << endl;
+        cout << "Right (normalized): " << right << endl;
+        
+        // Verify orthogonality
+        cout << "Forward·Up: " << Vector3f::dot(forward, up) << endl;
+        cout << "Forward·Right: " << Vector3f::dot(forward, right) << endl;
+        cout << "Up·Right: " << Vector3f::dot(up, right) << endl;
+    }
+
+
 private:
-    Vector3f eye;
-    Vector3f forward;
-    Vector3f right;
-    Vector3f up;
+    Vector3f eye = Vector3f::ZERO;
+    Vector3f forward = Vector3f::FORWARD;
+    Vector3f right = Vector3f::RIGHT;
+    Vector3f up = Vector3f::UP;
 };
+
+
+
 
 // Refactored Picture class using Image
 class Picture {
@@ -418,10 +470,15 @@ public:
         string name;
         int w, h;
         Scene scene;
-        Camera camera;
+        // Camera camera;
         vector<Material*> materials;
         bool do_exposure = false;
         float exposure;
+        // camera
+        Vector3f eye = Vector3f::ZERO;
+        Vector3f forward = Vector3f::FORWARD;
+        Vector3f up = Vector3f::UP;
+        Camera getCamera() const { return Camera(eye, forward, up); }
 
 
         Config() {
@@ -459,6 +516,12 @@ public:
                 parseSun(command, config);
             else if (command[0] == "expose")
                 parseExposure(command, config);
+            else if (command[0] == "eye")
+                parseEye(command, config);
+            else if (command[0] == "forward")
+                parseForward(command, config);
+            else if (command[0] == "up")
+                parseUp(command, config);
         }
         return 0;
     }
@@ -574,6 +637,26 @@ private:
         config.exposure = v;
         return 0;
     }
+
+
+    int parseEye(const vector<string> &command, Config &config) {
+        vector<float> data = readFloatArray(command, 1, 3);
+        Vector3f vec(data[0], data[1], data[2]);
+        config.eye = vec;
+        return 0;
+    }
+    int parseForward(const vector<string> &command, Config &config) {
+        vector<float> data = readFloatArray(command, 1, 3);
+        Vector3f vec(data[0], data[1], data[2]);
+        config.forward = vec;
+        return 0;
+    }
+    int parseUp(const vector<string> &command, Config &config) {
+        vector<float> data = readFloatArray(command, 1, 3);
+        Vector3f vec(data[0], data[1], data[2]);
+        config.up = vec;
+        return 0;
+}
 };
 
 
@@ -581,6 +664,9 @@ private:
 static float expose(float l, float v) {
     return 1.0f - exp(-v*l);
 }
+
+
+
 
 
 void printDebugInfo(const Ray& ray, const Hit& hit, const Vector3f& dir_to_light, 
@@ -644,7 +730,8 @@ int main(int argc, char* argv[]) {
     configparser.readConfigFromFile(argv[1], config);
 
     Picture image(config.w, config.h);
-    Camera& camera = config.camera;
+    Camera camera = config.getCamera();
+    camera.debugCameraVectors();  // Call debug function on camera instance
     Scene& scene = config.scene;
 
     for (int i = 0; i < config.w; i++) {
@@ -695,6 +782,7 @@ int main(int argc, char* argv[]) {
             image.setPixel(i, j, pixel_color);
         }
     }
+    
 
     image.exportPNG(config.name.c_str());
     return 0;
