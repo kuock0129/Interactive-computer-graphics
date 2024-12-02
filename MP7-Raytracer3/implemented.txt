@@ -1,0 +1,6 @@
+exposure
+suns
+camera
+plane
+triangle
+bulb
