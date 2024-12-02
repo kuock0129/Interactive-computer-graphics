@@ -2,3 +2,4 @@ exposure
 suns
 camera
 plane
+triangle

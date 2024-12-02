@@ -128,6 +128,11 @@ public:
         return os;
     }
 
+    
+    Vector3f operator/(float scalar) const {
+        return Vector3f(x / scalar, y / scalar, z / scalar);
+    }
+
     // Member variables
     float x, y, z;
 };
@@ -426,6 +431,67 @@ private:
 
 
 
+class Triangle : public Object {
+public:
+    // Triangle(const vector<Vector3f> &p, Material *mat);
+    // bool intersect(const Ray &ray, Hit &hit, float tmin) override;
+    // void serialize(ostream &os) const override;
+
+    Triangle(const vector<Vector3f> &p, Material *mat): Object(mat),
+        points(p) {
+        normal = Vector3f::cross(p[1] - p[0], p[2] - p[0]).normalized();
+        Vector3f a1 = Vector3f::cross(p[2]-p[0], normal);
+        Vector3f a2 = Vector3f::cross(p[1]-p[0], normal);
+        e1 = a1 / Vector3f::dot(a1, p[1] - p[0]);
+        e2 = a2 / Vector3f::dot(a2, p[2] - p[0]);
+    }
+
+
+    bool intersect(const Ray &ray, Hit &hit, float tmin) {
+        float rd_dot_n = Vector3f::dot(ray.getDirection(), normal);
+        if (rd_dot_n == 0) {
+            return false;
+        }
+
+        const Vector3f &p0 = points[0];
+        float t = Vector3f::dot(p0 - ray.getOrigin(), normal) / rd_dot_n;
+        if (t < tmin) {
+            return false;
+        }
+
+        Vector3f p = ray.pointAtParameter(t);
+
+        // check p combination
+        float b1 = Vector3f::dot(e1, p - p0);
+        float b2 = Vector3f::dot(e2, p - p0);
+        float b0 = 1.0f - b1 - b2;
+        if ((b0 < 0) || (b0 > 1) || (b1 < 0) || (b1 > 1) || (b2 < 0) || (b2 > 1)) {
+            return false;
+        }
+        hit.t = t;
+        hit.normal = normal;
+        hit.material = material;
+        return true;
+    }
+
+
+    void serialize(ostream& os) const {
+        os << "Triangle(" << points[0] << ',' << points[1]
+            << ',' << points[2] << ")";
+    }
+
+
+
+private:
+    vector<Vector3f> points;
+    Vector3f normal;
+    Vector3f e1, e2;
+};
+
+
+
+
+
 
 // Scene class
 class Scene {
@@ -584,6 +650,7 @@ public:
         Vector3f eye = Vector3f::ZERO;
         Vector3f forward = Vector3f::FORWARD;
         Vector3f up = Vector3f::UP;
+        vector<Vector3f> vertices;
         Camera getCamera() const { return Camera(eye, forward, up); }
 
 
@@ -630,11 +697,16 @@ public:
                 parseUp(command, config);
             else if (command[0] == "plane")
                 parsePlane(command, config);
-        }
+            else if (command[0] == "xyz")
+            parseXYZ(command, config);
+            else if (command[0] == "tri")
+                parseTRI(command, config);
+            }
         return 0;
     }
 
 private:
+    vector<Vector3f> vertices; 
     static bool toInt(const string& str, int& num) {
         num = 0;
         size_t i = 0;
@@ -719,7 +791,8 @@ private:
         // config.scene.addSphere(std::move(sphere));
         // return 0;
         
-        Sphere *sphere = new Sphere(data[3], Vector3f(data[0],data[1],data[2]), mat);
+        // Sphere *sphere = new Sphere(data[3], Vector3f(data[0],data[1],data[2]), mat);
+        Object *sphere = new Sphere(data[3], Vector3f(data[0],data[1],data[2]), mat);
         config.scene.addObject(sphere); 
         return 0;
     }
@@ -731,7 +804,8 @@ private:
         }
         vector<float> data = readFloatArray(command, 1, 4);
         Material *mat = config.materials.back();
-        Plane *plane = new Plane(data, mat);
+        // Plane *plane = new Plane(data, mat);
+        Object *plane = new Plane(data, mat);
         config.scene.addObject(plane); 
         return 0;
     }
@@ -780,6 +854,28 @@ private:
         vector<float> data = readFloatArray(command, 1, 3);
         Vector3f vec(data[0], data[1], data[2]);
         config.up = vec;
+        return 0;
+    }
+
+
+    int parseXYZ(const vector<string> &command, Config &config) {
+        vector<float> data = readFloatArray(command, 1, 3);
+        vertices.push_back(Vector3f(data[0], data[1], data[2]));
+        return 0;
+    }
+
+    int parseTRI(const vector<string> &command, Config &config) {
+        vector<Vector3f> points;
+        for (int i = 1; i < 4; i++) {
+            int idx;
+            if (!toInt(command[i], idx)) return -1;
+            // TODO: the index is somehow wrong
+            idx = (idx > 0) ? idx - 1 : (idx + vertices.size()) % vertices.size(); // for minus
+            points.push_back(vertices[idx]);
+        }
+        Material *mat = config.materials.back();
+        Object *triangle = new Triangle(points, mat);
+        config.scene.addObject(triangle);
         return 0;
     }
 
