@@ -212,6 +212,8 @@ public:
         Vector3f& col, float& distanceToLight) const = 0;
 };
 
+
+
 // SunLight derived class
 class SunLight : public Light {
 public:
@@ -222,11 +224,29 @@ public:
         Vector3f& col, float& distanceToLight) const override {
         dir = dir_to_light;
         col = color;
-        distanceToLight = -1;
+        distanceToLight = INFINITY;
     }
-
 private:
     Vector3f dir_to_light;
+    Vector3f color;
+};
+
+
+class BulbLight : public Light{
+public:
+    BulbLight(const Vector3f &p, const Vector3f &c):
+        src(p), color(c) {}
+
+
+    void getIllumination( const Vector3f& p, Vector3f& dir, 
+        Vector3f& col, float& distanceToLight ) const override {
+        Vector3f d = src - p;
+        dir = d.normalized();
+        col = color / d.absSquared(); // the brightness of light decreases
+        distanceToLight = d.abs();
+    }
+private: 
+    Vector3f src;
     Vector3f color;
 };
 
@@ -286,7 +306,8 @@ public:
 
         // Don't clamp the dot product to 0, let it be negative
         float n_dot_l = Vector3f::dot(n, dir_to_light);
-        float lamport = n_dot_l;
+        // float lamport = n_dot_l;
+        float lamport = std::max(0.0f, n_dot_l);  // Add this clamp
         Vector3f ret = (light_color * diffusion_color) * lamport;
         // value may not be in the range [0, 1]
         // ret.clamp(0, 1);
@@ -698,9 +719,11 @@ public:
             else if (command[0] == "plane")
                 parsePlane(command, config);
             else if (command[0] == "xyz")
-            parseXYZ(command, config);
+                parseXYZ(command, config);
             else if (command[0] == "tri")
                 parseTRI(command, config);
+            else if (command[0] == "bulb")
+                parseBulb(command, config);
             }
         return 0;
     }
@@ -879,6 +902,13 @@ private:
         return 0;
     }
 
+    int parseBulb(const vector<string> &command, Config &config) {
+        vector<float> data = readFloatArray(command, 1, 3);
+        Light *bulb = new BulbLight(Vector3f(data[0],data[1],data[2]), config.materials.back()->getDiffusionColor());
+        config.scene.addLight(bulb);
+        return 0;
+    }
+
 };
 
 
@@ -981,7 +1011,7 @@ int main(int argc, char* argv[]) {
                     Ray secondary(p_hit, dir_to_light);
                     float epsilon = 0.0001f; // magic number
                     Hit second_hit;
-                    if (scene.intersect(secondary, second_hit, epsilon)) {
+                    if (scene.intersect(secondary, second_hit, epsilon) && (second_hit.t < d)) {
                         light_color = Vector3f(0,0,0);
                     }
                     // rgb += hit.material->Shade(ray, hit, dir_to_light, light_color);

@@ -3,3 +3,4 @@ suns
 camera
 plane
 triangle
+bulb
