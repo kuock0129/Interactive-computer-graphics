@@ -54,6 +54,10 @@ public:
         return *this;
     }
 
+    bool operator==(const Vector3f& other) const {
+        return x == other.x && y == other.y && z == other.z;
+    }
+
     // Scalar multiplication
     Vector3f operator*(float scalar) const {
         return Vector3f(x * scalar, y * scalar, z * scalar);
@@ -100,6 +104,12 @@ public:
     // Squared magnitude
     float absSquared() const {
         return x * x + y * y + z * z;
+    }
+
+    Vector3f normalized() const {
+        Vector3f result = *this;
+        result.normalize();
+        return result;
     }
 
     // Normalize the vector
@@ -154,6 +164,10 @@ public:
     friend ostream& operator<<(ostream& os, const Vector4f& v) {
         os << "(" << v.x << ", " << v.y << ", " << v.z << ", " << v.w << ")";
         return os;
+    }
+
+    Vector3f xyz() const {
+        return Vector3f(x, y, z);
     }
 
     // Member variables
@@ -285,17 +299,40 @@ private:
 };
 
 
+
+
+class Object {
+public:
+    Object(Material *mat): material(mat) {}
+    virtual ~Object() {}
+    virtual bool intersect(const Ray &ray, Hit &hit, float tmin) = 0;
+    friend ostream& operator << (ostream &os, const Object& object) {
+        object.serialize(os);
+        return os;
+    }
+    virtual void serialize(ostream &os) const = 0;
+protected:
+    Material *material;
+};
+
+
+
+
+
+
 // Modified Sphere class
-class Sphere {
+// class Sphere {
+class Sphere : public Object {
 public:
     Sphere(float rad, const Vector3f& cen, Material* mat)
-        : radius(rad), center(cen), material(mat) {}
+        // : radius(rad), center(cen), material(mat) {}
+        :Object(mat), radius(rad), center(cen) {}
 
     float radius;
     Vector3f center;
-    Material* material;
+    // Material* material;
 
-    bool intersect(const Ray& ray, Hit& hit, float tmin = 0) {
+    bool intersect(const Ray& ray, Hit& hit, float tmin) override {
         float r2 = radius * radius;
         Vector3f ro = center - ray.getOrigin();
         bool inside = r2 > ro.absSquared();
@@ -317,6 +354,13 @@ public:
         hit.normal.normalize();
         return true;
     }
+
+   void serialize(ostream& os) const override {
+        os << "Sphere(c=(" << center[0] << ',' << center[1] << ',' << center[2]
+            << "),r=" << radius 
+            << ",mat=(" << material << "))";
+    }   
+
 private:
     // float radius;
     // Vector3f center;
@@ -327,13 +371,69 @@ private:
 
 
 
+
+
+class Plane : public Object {
+public:
+    Plane(const vector<float> &params, Material *mat) : Object(mat),
+        coefficients(params[0], params[1], params[2], params[3]) {}
+
+    bool intersect(const Ray &ray, Hit &hit, float tmin) {
+        Vector3f n = getNormal();
+        // Normalize the normal vector to prevent numerical issues
+        n.normalize();
+
+        float rd_dot_n = Vector3f::dot(ray.getDirection(), n);
+        if (rd_dot_n == 0) {
+            // cout << "cond1" << endl;
+            return false;
+        }
+        Vector3f p = get1Point();
+        float t = Vector3f::dot(p - ray.getOrigin(), n) / rd_dot_n;
+        if (t < tmin) {
+            // cout << "cond2" << t << ' ' << tmin << endl;
+            return false;
+        }
+        hit.t = t;
+        hit.normal = n.normalized();
+        hit.material = material;
+        return true;
+    }
+
+    Vector3f getNormal() const {
+        return coefficients.xyz();
+    }
+
+    Vector3f get1Point() const {
+        if (coefficients[0] != 0)
+            return Vector3f(-coefficients[3] / coefficients[0], 0.0f, 0.0f);
+        else if (coefficients[1] != 0)
+            return Vector3f(0.0f, -coefficients[3] / coefficients[1], 0.0f);
+        else if (coefficients[2] != 0)
+            return Vector3f(0.0f, 0.0f, -coefficients[3] / coefficients[2]);
+        return Vector3f::ZERO;
+    }
+
+    void serialize(ostream &os) const {
+        os << "Plane(" << coefficients[0] << ',' << coefficients[1]
+           << ',' << coefficients[2]
+           << ',' << coefficients[3] << ")";
+    }
+
+private:
+    Vector4f coefficients;
+};
+
+
+
+
 // Scene class
 class Scene {
 public:
-    void addSphere(Sphere&& sphere) {
+    void addObject(Object *object) {
         // cout << "Adding sphere: " << sphere << endl;
-        printf("Adding sphere: %f %f %f %f\n", sphere.center.x, sphere.center.y, sphere.center.z, sphere.radius);
-        objects.push_back(std::move(sphere));
+        // printf("Adding sphere: %f %f %f %f\n", sphere.center.x, sphere.center.y, sphere.center.z, sphere.radius);
+        objects.push_back(object);
     }
 
     void addLight(Light* light) {
@@ -345,10 +445,16 @@ public:
     }
 
     bool intersect(const Ray& ray, Hit& hit, float tmin = 0) {
+        if (ray.getDirection() == Vector3f::ZERO) {
+            return false;
+        }
         bool ret = false;
-        for (size_t i = 0; i < objects.size(); i++) {
+        // for (size_t i = 0; i < objects.size(); i++) {
+        size_t start = 0;
+        size_t end = objects.size();
+        for (size_t i = start; i < end; i++) {
             Hit curhit;
-            if (objects[i].intersect(ray, curhit, tmin)) {
+            if (objects[i]->intersect(ray, curhit, tmin)) {
                 if (!ret || hit.t > curhit.t) {
                     hit = curhit;
                 }
@@ -359,7 +465,7 @@ public:
     }
 
 private:
-    vector<Sphere> objects;
+    vector<Object*> objects;
     vector<Light*> lights;
 };
 
@@ -522,6 +628,8 @@ public:
                 parseForward(command, config);
             else if (command[0] == "up")
                 parseUp(command, config);
+            else if (command[0] == "plane")
+                parsePlane(command, config);
         }
         return 0;
     }
@@ -606,8 +714,25 @@ private:
         vector<float> data = readFloatArray(command, 1, 4);
         // Sphere sphere(data[3], Vector3f(data[0], data[1], data[2]), color_stat);
         Material *mat = config.materials.back();
-        Sphere sphere(data[3], Vector3f(data[0],data[1],data[2]), mat);
-        config.scene.addSphere(std::move(sphere));
+        
+        // Sphere sphere(data[3], Vector3f(data[0],data[1],data[2]), mat);
+        // config.scene.addSphere(std::move(sphere));
+        // return 0;
+        
+        Sphere *sphere = new Sphere(data[3], Vector3f(data[0],data[1],data[2]), mat);
+        config.scene.addObject(sphere); 
+        return 0;
+    }
+
+    int parsePlane(const vector<string> &command, Config &config) {
+        const int PLANE_CMD_SIZE = 5;
+        if (command.size() != PLANE_CMD_SIZE) {
+            return -1;
+        }
+        vector<float> data = readFloatArray(command, 1, 4);
+        Material *mat = config.materials.back();
+        Plane *plane = new Plane(data, mat);
+        config.scene.addObject(plane); 
         return 0;
     }
 
@@ -656,7 +781,8 @@ private:
         Vector3f vec(data[0], data[1], data[2]);
         config.up = vec;
         return 0;
-}
+    }
+
 };
 
 
