@@ -9,6 +9,7 @@
 
 
 
+
 // /**
 //  * Fetches, reads, and compiles GLSL; sets two global variables; and begins
 //  * the animation
@@ -63,6 +64,10 @@ function compile(vs_source, fs_source) {
     return program
 }
 
+
+
+
+
 /**
  * Draw every ticks
  * @param {*} milliseconds 
@@ -72,66 +77,99 @@ function tick(milliseconds) {
     requestAnimationFrame(tick) // asks browser to call tick before next frame
 }
 
-/**
- * Draw shapes given the information from geom
- * @param {*} milliseconds 
- */
-function draw(milliseconds) {
-    gl.clear(gl.COLOR_BUFFER_BIT) 
-    gl.useProgram(program)
+
+
+
+
+
+// /**
+//  * Draw shapes given the information from geom
+//  * @param {*} milliseconds 
+//  */
+// function draw(milliseconds) {
+//     gl.clear(gl.COLOR_BUFFER_BIT);
+//     gl.useProgram(program);
     
-    // values that do not vary between vertexes or fragments are called "uniforms"
-    gl.uniform1f(program.uniforms.seconds, milliseconds/1000)
-    
-    gl.bindVertexArray(geom.vao)
-    gl.drawElements(geom.mode, geom.count, geom.type, 0)
-}
-
-
-
-
-/**
- * Read from the json file and parse all the shapes
- * @param {*} geom 
- * @returns {Object} 
- */
-function setupGeomery(geom) {
-    // Create a new Vertex Array Object (VAO) to store all the state for this geometry
-    var triangleArray = gl.createVertexArray()
-    gl.bindVertexArray(triangleArray) // Bind the VAO for configuration
-
-
-    var number = geom.attributes.length;
-
-    // Iterate over each attribute set to create and bind buffers
-    for(let i=0; i<number; i+=1) {
-        let buff = gl.createBuffer() // Create a buffer for the current attribute
-        gl.bindBuffer(gl.ARRAY_BUFFER, buff) // Bind the buffer to the ARRAY_BUFFER target
-
-        // Convert the attribute data into a Float32Array and load it into the buffer
-        let float32 = new Float32Array(geom.attributes[i].flat())
-        gl.bufferData(gl.ARRAY_BUFFER, float32, gl.STATIC_DRAW)
+//     // Update vertex positions
+//     const jitteredVertices = new Float32Array(originalVertices.length);
+//     for(let i = 0; i < originalVertices.length; i += 2) {
+//         // Add cumulative random jitter to each vertex
+//         const xJitter = (Math.random() - 0.5) * 0.02;
+//         const yJitter = (Math.random() - 0.5) * 0.02;
         
-        // Specify how the data will be fed to the shader
-        // `geom.attributes[i][0].length` defines the number of components per vertex (e.g., 3 for positions)
-        gl.vertexAttribPointer(i, geom.attributes[i][0].length, gl.FLOAT, false, 0, 0)
-        gl.enableVertexAttribArray(i) // Enable this attribute for rendering
-    }
+//         jitteredVertices[i] = originalVertices[i] + xJitter;
+//         jitteredVertices[i+1] = originalVertices[i+1] + yJitter;
+//     }
+    
+//     // Update the vertex buffer with new positions
+//     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+//     gl.bufferData(gl.ARRAY_BUFFER, jitteredVertices, gl.DYNAMIC_DRAW);
+    
+//     gl.bindVertexArray(geom.vao);
+//     gl.drawElements(geom.mode, geom.count, geom.type, 0);
+// }
 
-    // Create an element array buffer for triangle indices
-    var indices = new Uint16Array(geom.triangles.flat()); // Flatten the triangle indices array
-    var indexBuffer = gl.createBuffer(); // Create a new buffer for the indices
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer); // Bind it as an ELEMENT_ARRAY_BUFFER
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW); // Load index data into the buffer
+
+// Global variables to store the current jittered positions
+let currentVertices;
+let vertexBuffer;
+
+function setupGeomery(geom) {
+    var triangleArray = gl.createVertexArray();
+    gl.bindVertexArray(triangleArray);
+
+    // 1. Store vertex buffer globally
+    vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    
+    // Initialize current vertices from original positions
+    currentVertices = new Float32Array(geom.attributes[0].flat());
+    
+    // 2. Use DYNAMIC_DRAW for the vertex buffer
+    gl.bufferData(gl.ARRAY_BUFFER, currentVertices, gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+
+    // Color buffer remains static
+    var colorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(geom.attributes[1].flat()), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(1);
+
+    var indices = new Uint16Array(geom.triangles.flat());
+    var indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
     return {
-        mode: gl.TRIANGLES,          // Rendering mode (TRIANGLES means each set of 3 vertices forms a triangle)
-        count: indices.length,       // Total number of indices
-        type: gl.UNSIGNED_SHORT,     // Data type of the indices (16-bit integers)
-        vao: triangleArray           // The Vertex Array Object containing the configuration
-    }
+        mode: gl.TRIANGLES,
+        count: indices.length,
+        type: gl.UNSIGNED_SHORT,
+        vao: triangleArray
+    };
 }
 
+
+function draw(milliseconds) {
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(program);
+    
+    // 3. Update vertex positions with cumulative random changes
+    for(let i = 0; i < currentVertices.length; i += 2) {
+        // Add small random changes to current positions
+        currentVertices[i] += (Math.random() - 0.5) * 0.1;     // x coordinate
+        currentVertices[i + 1] += (Math.random() - 0.5) * 0.1; // y coordinate
+    }
+    
+    // 4. Update buffer with new positions
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, currentVertices, gl.DYNAMIC_DRAW);
+    
+    gl.uniform1f(program.uniforms.seconds, milliseconds/1000);
+    gl.bindVertexArray(geom.vao);
+    gl.drawElements(geom.mode, geom.count, geom.type, 0);
+}
 
 
 window.addEventListener('load', async (event) => {
