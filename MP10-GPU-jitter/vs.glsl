@@ -30,7 +30,7 @@ void main() {
                      
     float yJitter = random(float(gl_VertexID) + 12.7) * 0.05 * 
                     (cos(seconds * 27.0 + vertexPhase) + 
-                     0.7 * sin(seconds * 17.0 + vertexPhase * 2.0));
+                     1.7 * sin(seconds * 17.0 + vertexPhase * 2.0));
     
     gl_Position = vec4(x + xJitter, y + yJitter, 0.0, 1.0);
 }
