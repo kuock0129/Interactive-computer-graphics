@@ -27,12 +27,13 @@ void main() {
     // Lambert diffuse lighting calculation
     float lambert = max(dot(n, lightdir), 0.0);
     
+    
     // Specular parameters
-    float shallowShininess = 100.0;  // Sharper spots for green areas
+    float shallowShininess = 256.0;  // Sharper spots for green areas
     float steepShininess = 30.0;     // Broader spots for red areas
     float shininess = mix(steepShininess, shallowShininess, step(0.1, steepness));
     
-    float shallowSpecIntensity = 10.0;  // Brighter highlights for green
+    float shallowSpecIntensity = 50.0;  // Brighter highlights for green
     float steepSpecIntensity = 0.5;    // Dimmer highlights for red
     float specIntensity = mix(steepSpecIntensity, shallowSpecIntensity, step(0.7, steepness));
     
