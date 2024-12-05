@@ -2,10 +2,10 @@
 precision highp float;
 
 // Uniform inputs
-uniform vec4 color;      // Object base color
-uniform vec3 lightdir;   // Light direction vector
-uniform vec3 lightcolor; // Light color
-uniform vec3 eye;        // Eye/camera position
+uniform vec4 color;   
+uniform vec3 lightdir;  
+uniform vec3 lightcolor;
+uniform vec3 eye;       
 
 // Vertex inputs
 in vec4 pos;

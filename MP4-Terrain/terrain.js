@@ -104,9 +104,9 @@ function draw(seconds) {
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
     gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
-    const eyePosition = [1.3, 0.8, 0.8]
+    const eyePosition = [1.4, 0.6, 0.8]
     // light
-    let ld = normalize([1,1,2])
+    let ld = normalize([1, 2, 1.5])
     gl.uniform3fv(program.uniforms.lightdir, ld)
     gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
     gl.uniform3fv(program.uniforms.eye, eyePosition)
@@ -237,7 +237,7 @@ function makeGeom(gridSize, faults) {
     return geom;
 }
 
-/**
+/**s
  * Generates terrain geometry and initializes rendering.
  * @param {number} gridSize - Number of vertices per grid row/column.
  * @param {number} faults - Number of faults to apply to the terrain.
