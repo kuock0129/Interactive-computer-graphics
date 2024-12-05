@@ -180,7 +180,7 @@ function createFault(positions) {
  * @param {number} faults - Number of faults to apply to the terrain.
  * @returns {Object} The geometry data with vertices, normals, and triangles.
  */
-function makeGeom(gridSize, faults) {
+function makeGeom(gridSize, faults, weathering){
     const geom = {
         triangles: [],
         attributes: [[], []] // [positions, normals]
@@ -197,6 +197,41 @@ function makeGeom(gridSize, faults) {
     // Apply faults to create terrain height variation
     for (let i = 0; i < faults; i++) {
         createFault(geom.attributes[0]);
+    }
+
+
+    // Apply weathering for Smoothing
+    for (let t = 0; t < weathering; t += 1) {
+        let newHeights = []
+        for (let i = 0; i < gridSize; i += 1) {
+            for (let j = 0; j < gridSize; j += 1) {
+                let count = 0
+                let sumHeight = 0
+                const curr = i * gridSize + j
+                if (i > 0) {
+                    sumHeight += geom.attributes[0][curr-gridSize][2]
+                    count += 1
+                }
+                if (i + 1 < gridSize) {
+                    sumHeight += geom.attributes[0][curr+gridSize][2]
+                    count += 1
+                }
+                if (j > 0) {
+                    sumHeight += geom.attributes[0][curr-1][2]
+                    count += 1
+                }
+                if (j + 1 < gridSize) {
+                    sumHeight += geom.attributes[0][curr+1][2]
+                    count += 1
+                }
+                let height = (geom.attributes[0][curr][2] + (sumHeight / count)) / 2
+                newHeights.push(height)
+            }
+        }
+        let n = geom.attributes[0].length
+        for (let i = 0; i < n; i += 1) {
+            geom.attributes[0][i][2] = newHeights[i]
+        }
     }
 
     // Normalize terrain height
@@ -242,9 +277,9 @@ function makeGeom(gridSize, faults) {
  * @param {number} gridSize - Number of vertices per grid row/column.
  * @param {number} faults - Number of faults to apply to the terrain.
  */
-function generateTerrain(gridSize, faults) {
+function generateTerrain(gridSize, faults, weathering) {
     // Generate geometry
-    const terrain = makeGeom(gridSize, faults);
+    const terrain = makeGeom(gridSize, faults, weathering)
     window.geom = setupGeomery(terrain);
 
     // Start animation loop if not already started
@@ -274,7 +309,8 @@ window.addEventListener('load', async (event) => {
     document.querySelector('#submit').addEventListener('click', event => {
         const gridSize = Number(document.querySelector('#gridsize').value) || 2
         const faults = Number(document.querySelector('#faults').value) || 0
-        generateTerrain(gridSize, faults)
+        const weathering = Number(document.querySelector('#weathering').value) || 0
+        generateTerrain(gridSize, faults, weathering)
     })
 
 })
