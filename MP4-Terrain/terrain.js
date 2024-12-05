@@ -1,4 +1,4 @@
-const DIFFUSION_COLOR = new Float32Array([0.8, 0.6, 0.4, 1])
+const DIFFUSION_COLOR = new Float32Array([0.7, 0.6, 0.4, 1])
 var animationStarted = false
 
 
@@ -104,15 +104,14 @@ function draw(seconds) {
     // let v = m4view([Math.cos(seconds/2),2,3], [0,0,0], [0,1,0])
 
     gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
-    const eyePosition = [1.3, 0.8, 0.8]
+    const eyePosition = [1.4, 0.6, 0.8]
     // light
-    let ld = normalize([1,1,2])
+    let ld = normalize([1,1,1.2])
     gl.uniform3fv(program.uniforms.lightdir, ld)
     gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
     gl.uniform3fv(program.uniforms.eye, eyePosition)
-    let m = m4rotZ(0.2 * seconds) // rotating camera
+    let m = m4rotZ(0.2 * seconds)
     let v = m4view(eyePosition, [0,0,0], [0,0,1])
-
 
     gl.uniformMatrix4fv(program.uniforms.mv, false, m4mul(v, m))
     gl.uniformMatrix4fv(program.uniforms.p, false, p)
@@ -275,26 +274,7 @@ window.addEventListener('load', async (event) => {
     document.querySelector('#submit').addEventListener('click', event => {
         const gridSize = Number(document.querySelector('#gridsize').value) || 2
         const faults = Number(document.querySelector('#faults').value) || 0
-        // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
-        if (gridSize < 2) {
-            console.error("grid size should be greater than 1")
-            return
-        }
-        if (faults < 0) {
-            console.error("fault should be non-negative")
-            return 
-         }
         generateTerrain(gridSize, faults)
     })
 
-    // // by default generate a 50x50 grid and 50 faults
-    // generateTerrain(50, 50)
-
-    // // initial
-    // const gridSize = Number(document.querySelector('#gridsize').value) || 2
-    // const faults = Number(document.querySelector('#faults').value) || 0
-    // generateTerrain(gridSize, faults)
-    
-    // // render
-    // requestAnimationFrame(tick)
 })

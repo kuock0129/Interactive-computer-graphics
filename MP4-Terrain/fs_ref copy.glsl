@@ -27,27 +27,30 @@ void main() {
     // Lambert diffuse lighting calculation
     float lambert = max(dot(n, lightdir), 0.0);
     
-    // Specular parameters
-    float shallowShininess = 100.0;  // Sharper spots for green areas
-    float steepShininess = 30.0;     // Broader spots for red areas
-    float shininess = mix(steepShininess, shallowShininess, step(0.1, steepness));
-    
-    float shallowSpecIntensity = 10.0;  // Brighter highlights for green
-    float steepSpecIntensity = 0.5;    // Dimmer highlights for red
-    float specIntensity = mix(steepSpecIntensity, shallowSpecIntensity, step(0.7, steepness));
+    // Specular parameters - higher shininess = smaller spots
+    float shallowShininess = 200.0;  // Small spots for shallow/green slopes
+    float steepShininess = 20.0;     // Large spots for steep/red slopes
+    float shininess = mix(steepShininess, shallowShininess, step(0.7, steepness));
     
     // Blinn-Phong specular highlights
     vec3 viewDir = normalize(eye - pos.xyz);
     vec3 halfway = normalize(lightdir + viewDir);
     float specAngle = max(dot(n, halfway), 0.0);
+    
+    // Adjust specular intensity - higher intensity = brighter spots
+    float shallowSpecIntensity = 2.0;   // Bright spots for shallow/green slopes
+    float steepSpecIntensity = 0.3;     // Dim spots for steep/red slopes
+    float specIntensity = mix(steepSpecIntensity, shallowSpecIntensity, step(0.7, steepness));
+    
     float specular = pow(specAngle, shininess) * specIntensity;
     
-    // Keep specular color separate from material color
-    vec3 diffuse = materialColor * lightcolor * lambert;
+    // Combine lighting components
+    vec3 diffuse = lightcolor * lambert;
     vec3 specularColor = lightcolor * specular;
     
     // Final color with enhanced highlights
-    vec3 finalColor = diffuse + specularColor;
+    vec3 finalColor = materialColor * diffuse + specularColor;
     
+    // Final fragment color
     fragColor = vec4(finalColor, 1.0);
 }
