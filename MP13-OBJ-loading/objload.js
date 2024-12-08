@@ -123,149 +123,154 @@ function resize(arr, newSize, defaultValue) {
     }
 }
 
-/** Parse obj */
-async function readObj(filename) {
-    const vPs = []
-    const vTs = []
-    const vNs = []
-    const colors = []
+/** Parse 3D OBJ file format */
+async function parseObjFile(filepath) {
+    const vertices = []
+    const textureCoordinates = []
+    const normals = []
+    const vertexColors = []
 
-    const COLOR_ID = 3
-    const data = [
-        vPs,
-        vTs,
-        vNs,
-        colors
+    const COLOR_INDEX = 3
+    const geometryData = [
+        vertices,
+        textureCoordinates,
+        normals,
+        vertexColors
     ]
 
-    let webGLVertices = [
-        [], // pos (vec3 + color)
-        [], // texture (vec2)
-        [], // normal (vec3)
-        []  // color (vec3)
+    let processedVertices = [
+        [], // positions (vec3 + color)
+        [], // texture coordinates (vec2)
+        [], // normal vectors (vec3)
+        []  // colors (vec3)
     ]
-    let triangles = []
-    let vertexMp = new Map()
-    // parse each face
-    function addVertex(face) {
-        if (vertexMp.has(face)) {
-            return vertexMp.get(face)
+    let triangleIndices = []
+    let vertexCache = new Map()
+
+    function processVertexIndices(vertexString) {
+        if (vertexCache.has(vertexString)) {
+            return vertexCache.get(vertexString)
         }
-        let vid = webGLVertices[0].length
-        let idxs = face.split('/')
-        for (let i = 0; i < 3; i+=1) {
-            if (i < idxs.length && idxs[i]) {
-                let realIdx = parseInt(idxs[i]) - 1 // 0-indexed
-                webGLVertices[i].push(data[i][realIdx])
-                // add color
+        let vertexId = processedVertices[0].length
+        let indices = vertexString.split('/')
+        for (let i = 0; i < 3; i++) {
+            if (i < indices.length && indices[i]) {
+                let dataIndex = parseInt(indices[i]) - 1 // Convert to 0-based indexing
+                processedVertices[i].push(geometryData[i][dataIndex])
+                // Add color data for vertex positions
                 if (i === 0) {
-                    webGLVertices[COLOR_ID].push(data[COLOR_ID][realIdx])
+                    processedVertices[COLOR_INDEX].push(geometryData[COLOR_INDEX][dataIndex])
                 }
             }
         }
-        vertexMp.set(face, vid)
-        return vid
+        vertexCache.set(vertexString, vertexId)
+        return vertexId
     }
 
-    function addTexCood() {
-        if (webGLVertices[1].length === webGLVertices[0].length) {
+    function fillMissingTextureCoords() {
+        if (processedVertices[1].length === processedVertices[0].length) {
             return
         }
-        resize(webGLVertices[1], webGLVertices[0].length, [0,0])
+        resize(processedVertices[1], processedVertices[0].length, [0,0])
     }
 
-    function addNormals() {
-        if (webGLVertices[2].length === webGLVertices[0].length) {
+    function calculateVertexNormals() {
+        if (processedVertices[2].length === processedVertices[0].length) {
             return
         }
-        resize(webGLVertices[2], webGLVertices[0].length, [0,0,0])
-        for (let t = 0; t < triangles.length; t += 1) {
-            let [x,y,z] = triangles[t]
-            const e1 = sub(webGLVertices[0][y], webGLVertices[0][x])
-            const e2 = sub(webGLVertices[0][z], webGLVertices[0][x])
-            const n = cross(e1, e2)
-            // add normal
-            webGLVertices[2][x] = add(webGLVertices[2][x], n)
-            webGLVertices[2][y] = add(webGLVertices[2][y], n)
-            webGLVertices[2][z] = add(webGLVertices[2][z], n)
+        resize(processedVertices[2], processedVertices[0].length, [0,0,0])
+        
+        for (let i = 0; i < triangleIndices.length; i += 1) {
+            let [v1, v2, v3] = triangleIndices[i]
+            const edge1 = sub(processedVertices[0][v2], processedVertices[0][v1])
+            const edge2 = sub(processedVertices[0][v3], processedVertices[0][v1])
+            const faceNormal = cross(edge1, edge2)
+            
+            // Accumulate normals for each vertex
+            processedVertices[2][v1] = add(processedVertices[2][v1], faceNormal)
+            processedVertices[2][v2] = add(processedVertices[2][v2], faceNormal)
+            processedVertices[2][v3] = add(processedVertices[2][v3], faceNormal)
         }
-        for (let i = 0; i < webGLVertices[2].length; i += 1) {
-            webGLVertices[2][i] = normalize(webGLVertices[2][i])
+        
+        // Normalize all vertex normals
+        for (let i = 0; i < processedVertices[2].length; i += 1) {
+            processedVertices[2][i] = normalize(processedVertices[2][i])
         }
     }
 
-    function transformObjToCenter() {
-        let minCoods = [...webGLVertices[0][0]]
-        let maxCoods = [...webGLVertices[0][0]]
-        for (let i = 1; i < webGLVertices[0].length; i += 1) {
-            for (let c = 0; c < 3; c += 1) {
-                minCoods[c] = Math.min(minCoods[c], webGLVertices[0][i][c])
-                maxCoods[c] = Math.max(maxCoods[c], webGLVertices[0][i][c])
+    function normalizeModelScale() {
+        let minBounds = [...processedVertices[0][0]]
+        let maxBounds = [...processedVertices[0][0]]
+        
+        // Find bounding box
+        for (let i = 1; i < processedVertices[0].length; i += 1) {
+            for (let axis = 0; axis < 3; axis += 1) {
+                minBounds[axis] = Math.min(minBounds[axis], processedVertices[0][i][axis])
+                maxBounds[axis] = Math.max(maxBounds[axis], processedVertices[0][i][axis])
             }
         }
 
-        // align center to (min + max) / 2
-        const center = div(add(minCoods, maxCoods), 2)
-        const scale = 2 / Math.max(...sub(maxCoods,minCoods))
+        // Calculate center and scaling factor
+        const modelCenter = div(add(minBounds, maxBounds), 2)
+        const normalizeScale = 2 / Math.max(...sub(maxBounds, minBounds))
 
-        for (let i = 0; i < webGLVertices[0].length; i += 1) {
-            webGLVertices[0][i] = mul(sub(webGLVertices[0][i], center), scale)
+        // Apply transformation
+        for (let i = 0; i < processedVertices[0].length; i += 1) {
+            processedVertices[0][i] = mul(sub(processedVertices[0][i], modelCenter), normalizeScale)
         }
     }
 
-    const keywords = {
+    const objCommands = {
         v(args) {
-            let nums = args.map(parseFloat)
-            vPs.push(nums.slice(0,3))
-            if (nums.length === 6) {
-                colors.push(nums.slice(3))
-            } else {
-                colors.push([0.7,0.7,0.7]) // light-gray
-            }
+            const coordinates = args.map(parseFloat)
+            vertices.push(coordinates.slice(0,3))
+            vertexColors.push(coordinates.length === 6 ? 
+                coordinates.slice(3) : 
+                [0.7, 0.7, 0.7]) // Default light gray
         },
         vt(args) {
-            vTs.push(args.map(parseFloat))
+            textureCoordinates.push(args.map(parseFloat))
         },
         vn(args) {
-            vNs.push(args.map(parseFloat))
+            normals.push(args.map(parseFloat))
         },
         f(args) {
-            let vids = args.map(face => addVertex(face))
-            for (let i = 1; i < vids.length - 1; i+=1) {
-                triangles.push([vids[0], vids[i], vids[i+1]])
+            const vertexIds = args.map(vertex => processVertexIndices(vertex))
+            for (let i = 1; i < vertexIds.length - 1; i += 1) {
+                triangleIndices.push([vertexIds[0], vertexIds[i], vertexIds[i + 1]])
             }
         }
     }
 
-    let text = await fetch(filename).then(res => res.text())
-    text.split('\n').forEach((line) => {
+    const fileContent = await fetch(filepath).then(res => res.text())
+    fileContent.split('\n').forEach((line) => {
         if (line === '' || line.startsWith('#')) {
             return
         }
         line = line.trim()
-        tokens = line.split(/\s+/)
-        const keyword = tokens[0]
-        const args = tokens.slice(1)
-        let handler = keywords[keyword]
-        if (!handler) {
-            console.warn("unknow keyword", keyword)
+        const tokens = line.split(/\s+/)
+        const command = tokens[0]
+        const parameters = tokens.slice(1)
+        
+        const commandHandler = objCommands[command]
+        if (!commandHandler) {
+            console.warn("Unknown OBJ command:", command)
             return
         }
-        handler(args)
+        commandHandler(parameters)
     })
 
-    // vt, vn may be empty
-    addTexCood()
-    addNormals()
+    // Process missing data
+    fillMissingTextureCoords()
+    calculateVertexNormals()
 
-    // scale and align
-    transformObjToCenter()
+    // Normalize model size and position
+    normalizeModelScale()
 
-    let ret = {
-        "triangles": triangles,
-        "attributes": webGLVertices
+    return {
+        "triangles": triangleIndices,
+        "attributes": processedVertices
     }
-    return ret
 }
 
 /** Parse material */
@@ -384,14 +389,14 @@ window.addEventListener('load', async (event) => {
 
     document.querySelector('#filepath').addEventListener('change', async event=>{
         const filePath = document.querySelector('#filepath').value
-        const obj = await readObj(filePath)
+        const obj = await parseObjFile(filePath)
         window.geom = setupGeomery(obj)
     })
 
     document.querySelector('#submit').addEventListener('click', async event => {
         const filePath = document.querySelector('#filepath').value
         const imagePath = document.querySelector('#imagepath').value
-        const obj = await readObj(filePath)
+        const obj = await parseObjFile(filePath)
         window.geom = setupGeomery(obj)
         // render
         if (!animationStarted) {
