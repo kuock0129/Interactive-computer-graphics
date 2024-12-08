@@ -1,5 +1,5 @@
-
-var diffusionColor = new Float32Array([1,1,1,0.3])
+/** constants */
+var diffusionColor = new Float32Array([0.5,0.5,0.5,1])
 var animationStarted = false
 var useTexture = false
 var textureProgram
@@ -35,7 +35,7 @@ function compileShader(vs_source, fs_source) {
         console.error(gl.getProgramInfoLog(program))
         throw Error("Linking failed")
     }
-
+    
     const uniforms = {}
     for(let i=0; i<gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i+=1) {
         let info = gl.getActiveUniform(program, i)
@@ -46,16 +46,13 @@ function compileShader(vs_source, fs_source) {
     return program
 }
 
-
-
-
 /**
  * Sends per-vertex data to the GPU and connects it to a VS input
- *
+ * 
  * @param data    a 2D array of per-vertex data (e.g. [[x,y,z,w],[x,y,z,w],...])
  * @param loc     the layout location of the vertex shader's `in` attribute
  * @param mode    (optional) gl.STATIC_DRAW, gl.DYNAMIC_DRAW, etc
- *
+ * 
  * @returns the ID of the buffer in GPU memory; useful for changing data later
  */
 function supplyDataBuffer(data, loc, mode) {
@@ -65,19 +62,17 @@ function supplyDataBuffer(data, loc, mode) {
     gl.bindBuffer(gl.ARRAY_BUFFER, buf)
     const f32 = new Float32Array(data.flat())
     gl.bufferData(gl.ARRAY_BUFFER, f32, mode)
-
+    
     gl.vertexAttribPointer(loc, data[0].length, gl.FLOAT, false, 0, 0)
     gl.enableVertexAttribArray(loc)
-
+    
     return buf
 }
-
-
 
 /**
  * Creates a Vertex Array Object and puts into it all of the data in the given
  * JSON structure, which should have the following form:
- *
+ * 
  * ````
  * {"triangles": a list of of indices of vertices
  * ,"attributes":
@@ -87,7 +82,7 @@ function supplyDataBuffer(data, loc, mode) {
  *  ]
  * }
  * ````
- *
+ * 
  * @returns an object with four keys:
  *  - mode = the 1st argument for gl.drawElements
  *  - count = the 2nd argument for gl.drawElements
@@ -116,112 +111,46 @@ function setupGeomery(geom) {
     }
 }
 
-/** resize the given array to a fixed size */
-function resize(arr, newSize, defaultValue) {
-    for (let i = arr.length; i < newSize; i+= 1) {
-        arr.push(defaultValue)
-    }
+/** Set non-texture color on terrain */
+function setShaderColor(r,g,b,a) {
+    useTexture = false
+    diffusionColor = new Float32Array([r,g,b,a])
 }
 
 /** Parse obj */
 async function readObj(filename) {
-    const vPs = []
-    const vTs = []
-    const vNs = []
-    const colors = []
-
-    const COLOR_ID = 3
-    const data = [
+    const vPs = [[0,0,0]]
+    const vTs = [[0,0]]
+    const vNs = [[0,0,0]]
+    
+    const vertices = [
         vPs,
         vTs,
         vNs,
-        colors
     ]
 
     let webGLVertices = [
         [], // pos (vec3 + color)
         [], // texture (vec2)
         [], // normal (vec3)
-        []  // color (vec3)
     ]
     let triangles = []
-    let vertexMp = new Map()
     // parse each face
     function addVertex(face) {
-        if (vertexMp.has(face)) {
-            return vertexMp.get(face)
-        }
-        let vid = webGLVertices[0].length
-        let idxs = face.split('/')
-        for (let i = 0; i < 3; i+=1) {
-            if (i < idxs.length && idxs[i]) {
-                let realIdx = parseInt(idxs[i]) - 1 // 0-indexed
-                webGLVertices[i].push(data[i][realIdx])
-                // add color
-                if (i === 0) {
-                    webGLVertices[COLOR_ID].push(data[COLOR_ID][realIdx])
-                }
+        face.split('/').forEach((idxStr, i) => {
+            let realIdx = 0
+            if (idxStr) {
+                realIdx = parseInt(idxStr)
             }
+            webGLVertices[i].push(vertices[i][realIdx])
         }
-        vertexMp.set(face, vid)
-        return vid
-    }
-
-    function addTexCood() {
-        if (webGLVertices[1].length === webGLVertices[0].length) {
-            return
-        }
-        resize(webGLVertices[1], webGLVertices[0].length, [0,0])
-    }
-
-    function addNormals() {
-        if (webGLVertices[2].length === webGLVertices[0].length) {
-            return
-        }
-        resize(webGLVertices[2], webGLVertices[0].length, [0,0,0])
-        for (let t = 0; t < triangles.length; t += 1) {
-            let [x,y,z] = triangles[t]
-            const e1 = sub(webGLVertices[0][y], webGLVertices[0][x])
-            const e2 = sub(webGLVertices[0][z], webGLVertices[0][x])
-            const n = cross(e1, e2)
-            // add normal
-            webGLVertices[2][x] = add(webGLVertices[2][x], n)
-            webGLVertices[2][y] = add(webGLVertices[2][y], n)
-            webGLVertices[2][z] = add(webGLVertices[2][z], n)
-        }
-        for (let i = 0; i < webGLVertices[2].length; i += 1) {
-            webGLVertices[2][i] = normalize(webGLVertices[2][i])
-        }
-    }
-
-    function transformObjToCenter() {
-        let minCoods = [...webGLVertices[0][0]]
-        let maxCoods = [...webGLVertices[0][0]]
-        for (let i = 1; i < webGLVertices[0].length; i += 1) {
-            for (let c = 0; c < 3; c += 1) {
-                minCoods[c] = Math.min(minCoods[c], webGLVertices[0][i][c])
-                maxCoods[c] = Math.max(maxCoods[c], webGLVertices[0][i][c])
-            }
-        }
-
-        // align center to (min + max) / 2
-        const center = div(add(minCoods, maxCoods), 2)
-        const scale = 2 / Math.max(...sub(maxCoods,minCoods))
-
-        for (let i = 0; i < webGLVertices[0].length; i += 1) {
-            webGLVertices[0][i] = mul(sub(webGLVertices[0][i], center), scale)
-        }
+        )
     }
 
     const keywords = {
         v(args) {
-            let nums = args.map(parseFloat)
-            vPs.push(nums.slice(0,3))
-            if (nums.length === 6) {
-                colors.push(nums.slice(3))
-            } else {
-                colors.push([0.7,0.7,0.7]) // light-gray
-            }
+            // TODO color
+            vPs.push(args.map(parseFloat).slice(0,3))
         },
         vt(args) {
             vTs.push(args.map(parseFloat))
@@ -230,9 +159,10 @@ async function readObj(filename) {
             vNs.push(args.map(parseFloat))
         },
         f(args) {
-            let vids = args.map(face => addVertex(face))
-            for (let i = 1; i < vids.length - 1; i+=1) {
-                triangles.push([vids[0], vids[i], vids[i+1]])
+            let start = webGLVertices[0].length
+            args.forEach(face => addVertex(face))
+            for (let i = start + 1; i < start + args.length - 1; i+=1) {
+                triangles.push([start, i, i+1])
             }
         }
     }
@@ -242,24 +172,11 @@ async function readObj(filename) {
         if (line === '' || line.startsWith('#')) {
             return
         }
-        line = line.trim()
         tokens = line.split(/\s+/)
         const keyword = tokens[0]
         const args = tokens.slice(1)
-        let handler = keywords[keyword]
-        if (!handler) {
-            console.warn("unknow keyword", keyword)
-            return
-        }
-        handler(args)
+        keywords[keyword](args)
     })
-
-    // vt, vn may be empty
-    addTexCood()
-    addNormals()
-
-    // scale and align
-    transformObjToCenter()
 
     let ret = {
         "triangles": triangles,
@@ -271,7 +188,13 @@ async function readObj(filename) {
 /** Parse material */
 function changeMaterial(value) {
     if (value == '') {
-        useTexture = false
+        setShaderColor(...diffusionColor)
+    } else if (/^#[0-9a-f]{8}$/i.test(value)) {
+        const r = Number('0x' + value.substr(1,2))/255
+        const g = Number('0x' + value.substr(3,2))/255
+        const b = Number('0x' + value.substr(5,2))/255
+        const a = Number('0x' + value.substr(7,2))/255
+        setShaderColor(r,g,b,a)
     } else if (/[.](jpg|png)$/.test(value)) {
         let img = new Image()
         img.crossOrigin = 'anonymous'
@@ -299,7 +222,7 @@ function changeMaterial(value) {
         })
         img.addEventListener('error', event => {
             console.error("failed to load", value)
-            useTexture = false
+            setShaderColor(1,0,1,0)
         })
     }
 }
@@ -315,15 +238,17 @@ function draw(seconds) {
     if (useTexture) {
         let bindPoint = gl.getUniformLocation(textureProgram, 'image')
         gl.uniform1i(bindPoint, slot) // where `slot` is same it was in step 2 above
+    } else {
+        gl.uniform4fv(program.uniforms.color, diffusionColor)
     }
 
-    const eyePosition = [2.1, 1.0, 1.4]
-    let m = m4rotZ(0.5 * seconds) // rotating camera
+    const eyePosition = [1.4, 1.0, 1.4]
+    let m = m4rotZ(0.2 * seconds) // rotating camera
     let v = m4view(eyePosition, [0,0,0], [0,0,1])
     let mv = m4mul(v, m)
 
-    // light is fixed relative to eye
-    let ld = normalize([1,1,2])
+    // light is fixed relative to terrain
+    let ld = m4mul(mv,normalize([1,1,2,0])).slice(0, 3)
     let h = normalize(add(ld, [0,0,1])) // after view matrix, eye direction is [0,0,1]
     gl.uniform3fv(program.uniforms.lightdir, ld)
     gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
@@ -331,8 +256,9 @@ function draw(seconds) {
 
     gl.uniformMatrix4fv(program.uniforms.mv, false, mv)
     gl.uniformMatrix4fv(program.uniforms.p, false, p)
-
+    
     gl.drawElements(geom.mode, geom.count, geom.type, 0)
+
 }
 
 /** Compute any time-varying or animated aspects of the scene */
@@ -359,15 +285,123 @@ function fillScreen() {
     }
 }
 
+/** create fault on the given position array */
+function createFault(positions) {
+    // create random p
+    let p = [(Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, 0] // [-1, 1]
+    let theta = 2.0 * Math.PI * Math.random()
+    let norm = [Math.cos(theta), Math.sin(theta), 0]
+    const R = 1.5
+    for (let i = 0; i < positions.length; i += 1) {
+        let product = dot(sub(positions[i], p), norm)
+        if (Math.abs(product) >= R) {
+            continue
+        }
+        const coefficient = Math.pow(1 - Math.pow(product / R, 2), 2)
+        if (product > 0) {
+            positions[i][2] += coefficient
+        } else {
+            positions[i][2] -= coefficient
+        }
+    }
+}
+
+/** make terrain based on gridSize and faults */
+function makeGeom(gridSize, faults) {
+    g = {"triangles":
+        []
+    ,"attributes":
+        [ // position
+            []
+        , // normal
+            []
+        , // texture
+            []
+        ]
+    }
+    // create grid
+    // make x, y range from [-1, 1]
+    const d = 2.0 / (gridSize - 1.0)
+
+    for(let i = 0; i < gridSize; i+=1) {
+        for (let j = 0; j < gridSize; j+=1) {
+            g.attributes[0].push([-1.0 + d * i, -1.0 + d * j, 0])
+        }
+    }
+
+    // create fault
+    for (let i = 0; i < faults; i += 1) {
+        createFault(g.attributes[0])
+    }
+
+    // normalize height
+    let maxHeight = Math.max(...g.attributes[0].map(pos => pos[2]))
+    let minHeight = Math.min(...g.attributes[0].map(pos => pos[2]))
+    const PEAK_HEIGHT = 0.8
+    g.attributes[0].forEach(pos => {
+        if (maxHeight !== minHeight) {
+            pos[2] = PEAK_HEIGHT * (pos[2] - (maxHeight + minHeight) / 2) / (maxHeight - minHeight)
+        }
+    })
+
+    // create triangles
+    for (let i = 0; i < gridSize - 1; i += 1) {
+        for (let j = 0; j < gridSize - 1; j += 1) {
+            let cur = i * gridSize + j
+            g.triangles.push([
+                cur, cur + 1, cur + gridSize
+            ])
+            g.triangles.push([
+                cur + 1, cur + gridSize, cur + gridSize + 1
+            ])
+        }
+    }
+
+    // add normals
+    for (let i = 0; i < g.attributes[0].length; i += 1) {
+        let row = Math.floor(i / gridSize)
+        let col = i % gridSize
+
+        let n = (row > 0) ? g.attributes[0][i - gridSize] : g.attributes[0][i]
+        let s = (row < gridSize - 1) ? g.attributes[0][i + gridSize] : g.attributes[0][i]
+        let w = (col > 0) ? g.attributes[0][i - 1] : g.attributes[0][i]
+        let e = (col < gridSize - 1) ? g.attributes[0][i + 1] : g.attributes[0][i]
+
+        let normal = cross(sub(n, s), sub(w, e))
+        g.attributes[1].push(normal)
+    }
+
+    // add texture coordinate
+    for(let i = 0; i < gridSize; i+=1) {
+        for (let j = 0; j < gridSize; j+=1) {
+            g.attributes[2].push([i/(gridSize-1), j/(gridSize-1)])
+        }
+    }
+
+    return g
+}
+
+/** generate geometry of the terrain */
+function generateTerrain(gridSize, faults) {
+    const terrain = makeGeom(gridSize, faults)
+    window.geom = setupGeomery(terrain)
+
+    // render if not yet started
+    if (!animationStarted) {
+        animationStarted = true
+        requestAnimationFrame(tick)
+    }
+}
+
 /** Compile, link, set up geometry */
 window.addEventListener('load', async (event) => {
     window.gl = document.querySelector('canvas').getContext('webgl2',
     // optional configuration object: see https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext
     {antialias: false, depth:true, preserveDrawingBuffer:true}
     )
-    let vs = await fetch('vertexShader.glsl').then(res => res.text())
-    let nonTextureFs = await fetch('nontexture_fragmentShader.glsl').then(res => res.text())
-    let textureFs = await fetch('texture_fragmentShader.glsl').then(res => res.text())
+    let vs = await fetch('vs.glsl').then(res => res.text())
+    let nonTextureFs = await fetch('nontexturefs.glsl').then(res => res.text())
+    let textureFs = await fetch('texturefs.glsl').then(res => res.text())
     window.nontextureProgram = compileShader(vs, nonTextureFs)
     window.textureProgram = compileShader(vs, textureFs)
     gl.enable(gl.DEPTH_TEST)
@@ -377,20 +411,16 @@ window.addEventListener('load', async (event) => {
     fillScreen()
     window.addEventListener('resize', fillScreen)
 
-    document.querySelector('#imagepath').addEventListener('change', event=>{
-        const imagePath = document.querySelector('#imagepath').value
-        changeMaterial(imagePath)
-    })
-
-    document.querySelector('#filepath').addEventListener('change', async event=>{
-        const filePath = document.querySelector('#filepath').value
-        const obj = await readObj(filePath)
-        window.geom = setupGeomery(obj)
-    })
+    // document.querySelector('#material').addEventListener('change', event=>{
+    //     const material = document.querySelector('#material').value
+    //     changeMaterial(material)
+    // })
 
     document.querySelector('#submit').addEventListener('click', async event => {
         const filePath = document.querySelector('#filepath').value
         const imagePath = document.querySelector('#imagepath').value
+        console.log(filePath, imagePath)
+        // TO DO: generate a new gridsize-by-gridsize grid here, then apply faults to it
         const obj = await readObj(filePath)
         window.geom = setupGeomery(obj)
         // render
@@ -398,16 +428,6 @@ window.addEventListener('load', async (event) => {
             animationStarted = true
             requestAnimationFrame(tick)
         }
-        changeMaterial(imagePath)
+        changeMaterial('')
     })
-    // // by default generate a 50x50 grid and 50 faults
-    // generateTerrain(50, 50)
-
-    // // initial
-    // const gridSize = Number(document.querySelector('#gridsize').value) || 2
-    // const faults = Number(document.querySelector('#faults').value) || 0
-    // generateTerrain(gridSize, faults)
-    
-    // // render
-    // requestAnimationFrame(tick)
 })
