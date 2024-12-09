@@ -273,25 +273,25 @@ function draw(seconds) {
 
     gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
 
-    const eyePosition = [2.5, 2.5, 0.9]
+    const eyePosition = [2.5, 2.5, 1.5]
     let m = m4rotZ(0.6 * seconds) // rotating camera
     let v = m4view(eyePosition, [0,0,0], [0,0,1])
     let mv = m4mul(v, m)
 
     // light
-    let ld = m4mul(mv, normalize([1, -2, 8,0])).slice(0, 3)
+    let ld = m4mul(mv, normalize([1, 1, 8, 0])).slice(0, 3)
     let h = normalize(add(ld, [0,0,1])) // after view matrix, eye direction becomes [0,0,1]
 
-    let ld2 = m4mul(mv, normalize([0,0,-1,0])).slice(0, 3)
-    let h2 = normalize(add(ld2, [0,0,1]))
+    // let ld2 = m4mul(mv, normalize([0,0,-1,0])).slice(0, 3)
+    // let h2 = normalize(add(ld2, [0,0,1]))
 
     gl.uniform3fv(program.uniforms.lightdir, ld)
     gl.uniform3fv(program.uniforms.lightcolor, [1,1,1])
     gl.uniform3fv(program.uniforms.halfway, h)
 
-    gl.uniform3fv(program.uniforms.lightdir2, ld2)
-    gl.uniform3fv(program.uniforms.lightcolor2, [1,1,1])
-    gl.uniform3fv(program.uniforms.halfway2, h2)
+    // gl.uniform3fv(program.uniforms.lightdir2, ld2)
+    // gl.uniform3fv(program.uniforms.lightcolor2, [1,1,1])
+    // gl.uniform3fv(program.uniforms.halfway2, h2)
 
     gl.uniformMatrix4fv(program.uniforms.mv, false, mv)
     gl.uniformMatrix4fv(program.uniforms.p, false, p)
@@ -322,9 +322,6 @@ function fillScreen() {
         window.p = m4perspNegZ(0.1, 10, 1, canvas.width, canvas.height)
     }
 }
-
-
-
 
 
 
