@@ -113,94 +113,48 @@ class Mesh {
         return edgeCount === 1
     }
 
-    computeVertexNormal(vIdx) {
-        if (!this.vertices[vIdx]) {
-            console.error(`Invalid vertex index: ${vIdx}`);
-            return [0, 1, 0];
-        }
-    
-        const normals = [];
-        const processedFaces = new Set();
-    
-        // Get all faces that contain this vertex
-        this.faces.forEach((face, faceIdx) => {
-            if (face.includes(vIdx) && !processedFaces.has(faceIdx)) {
-                processedFaces.add(faceIdx);
-                
-                // Need at least 3 vertices to compute a normal
-                if (face.length >= 3) {
-                    // Get three consecutive vertices including our target vertex
-                    let i = face.indexOf(vIdx);
-                    let v1 = this.vertices[face[i]];
-                    let v2 = this.vertices[face[(i + 1) % face.length]];
-                    let v3 = this.vertices[face[(i + 2) % face.length]];
-                    
-                    if (v1 && v2 && v3) {
-                        // Compute face normal using cross product
-                        let edge1 = [
-                            v2[0] - v1[0],
-                            v2[1] - v1[1],
-                            v2[2] - v1[2]
-                        ];
-                        let edge2 = [
-                            v3[0] - v1[0],
-                            v3[1] - v1[1],
-                            v3[2] - v1[2]
-                        ];
-                        
-                        // Cross product
-                        let normal = [
-                            edge1[1] * edge2[2] - edge1[2] * edge2[1],
-                            edge1[2] * edge2[0] - edge1[0] * edge2[2],
-                            edge1[0] * edge2[1] - edge1[1] * edge2[0]
-                        ];
-                        
-                        // Normalize
-                        let len = Math.sqrt(
-                            normal[0] * normal[0] + 
-                            normal[1] * normal[1] + 
-                            normal[2] * normal[2]
-                        );
-                        
-                        if (len > 0.000001) {  // Avoid division by zero
-                            normal[0] /= len;
-                            normal[1] /= len;
-                            normal[2] /= len;
-                            normals.push(normal);
-                        }
-                    }
-                }
-            }
-        });
-    
-        if (normals.length === 0) {
-            return [0, 1, 0];  // Default normal if no valid faces found
-        }
-    
-        // Average all face normals
-        let avgNormal = [0, 0, 0];
-        normals.forEach(n => {
-            avgNormal[0] += n[0];
-            avgNormal[1] += n[1];
-            avgNormal[2] += n[2];
-        });
-    
-        // Normalize the average
-        let len = Math.sqrt(
-            avgNormal[0] * avgNormal[0] + 
-            avgNormal[1] * avgNormal[1] + 
-            avgNormal[2] * avgNormal[2]
+    computeFaceNormal(mesh, faceIdx) {
+        const face = mesh.faces[faceIdx];
+        if (face.length < 3) return [0, 1, 0];
+        
+        // Get three vertices of the face
+        const v1 = mesh.vertices[face[0]];
+        const v2 = mesh.vertices[face[1]];
+        const v3 = mesh.vertices[face[2]];
+        
+        // Compute face normal using cross product
+        const edge1 = [
+            v2[0] - v1[0],
+            v2[1] - v1[1],
+            v2[2] - v1[2]
+        ];
+        const edge2 = [
+            v3[0] - v1[0],
+            v3[1] - v1[1],
+            v3[2] - v1[2]
+        ];
+        
+        // Cross product
+        const normal = [
+            edge1[1] * edge2[2] - edge1[2] * edge2[1],
+            edge1[2] * edge2[0] - edge1[0] * edge2[2],
+            edge1[0] * edge2[1] - edge1[1] * edge2[0]
+        ];
+        
+        // Normalize
+        const len = Math.sqrt(
+            normal[0] * normal[0] + 
+            normal[1] * normal[1] + 
+            normal[2] * normal[2]
         );
         
         if (len > 0.000001) {
-            avgNormal[0] /= len;
-            avgNormal[1] /= len;
-            avgNormal[2] /= len;
-        } else {
-            return [0, 1, 0];
+            normal[0] /= len;
+            normal[1] /= len;
+            normal[2] /= len;
         }
-    
-        return avgNormal;
+        
+        return normal;
     }
 }
 
@@ -319,13 +273,13 @@ function draw(seconds) {
 
     gl.uniform4fv(program.uniforms.color, DIFFUSION_COLOR)
 
-    const eyePosition = [2.0, 2.0, 0.7]
+    const eyePosition = [2.5, 2.5, 0.9]
     let m = m4rotZ(0.6 * seconds) // rotating camera
     let v = m4view(eyePosition, [0,0,0], [0,0,1])
     let mv = m4mul(v, m)
 
     // light
-    let ld = m4mul(mv, normalize([2,2,7,0])).slice(0, 3)
+    let ld = m4mul(mv, normalize([1, -2, 8,0])).slice(0, 3)
     let h = normalize(add(ld, [0,0,1])) // after view matrix, eye direction becomes [0,0,1]
 
     let ld2 = m4mul(mv, normalize([0,0,-1,0])).slice(0, 3)
@@ -531,7 +485,7 @@ function catmullClarkSubdivide(mesh) {
 
         // Step 4: Create new faces with proper connectivity
         mesh.faces.forEach((face, faceIdx) => {
-            if (!face || face.length < 3) return;
+            if (!face || face.length < 3) return;  // Accept any face with 3 or more vertices
             
             const facePointIdx = facePoints.get(faceIdx);
             if (facePointIdx === undefined) return;
@@ -546,9 +500,11 @@ function catmullClarkSubdivide(mesh) {
                 const ep = edgePoints.get(`${v1},${v2}`);
                 
                 if (vp1 !== undefined && vp2 !== undefined && ep !== undefined) {
-                    // Create new quad (split into two triangles)
-                    newMesh.faces.push([vp1, ep, facePointIdx]);
-                    newMesh.faces.push([ep, vp2, facePointIdx]);
+                    // Create new quad for each edge
+                    const prevEdgePoint = edgePoints.get(`${v1},${face[(i-1+face.length)%face.length]}`);
+                    if (prevEdgePoint !== undefined) {
+                        newMesh.faces.push([vp1, ep, facePointIdx, prevEdgePoint]);
+                    }
                 }
             }
         });
@@ -562,61 +518,83 @@ function catmullClarkSubdivide(mesh) {
 }
 
 function meshToGeometry(mesh) {
-    const positions = []
-    const normals = []
-    const indices = []
+    const positions = [];
+    const normals = [];
+    const indices = [];
     
-    try {
-        // First pass: create vertices and normals
-        mesh.faces.forEach((face, faceIdx) => {
-            if (!face || face.length < 3) {
-                console.warn(`Skipping invalid face ${faceIdx}`);
-                return;
-            }
-
-            // Create a triangle fan for faces
-            for (let i = 1; i < face.length - 1; i++) {
-                const v0 = face[0];
-                const v1 = face[i];
-                const v2 = face[i + 1];
-
-                // Verify vertex indices are valid
-                if (!mesh.vertices[v0] || !mesh.vertices[v1] || !mesh.vertices[v2]) {
-                    console.warn(`Invalid vertex index in face ${faceIdx}`);
-                    continue;
-                }
-
-                // Add vertices
-                [v0, v1, v2].forEach(vIdx => {
-                    const position = mesh.vertices[vIdx];
-                    const normal = mesh.computeVertexNormal(vIdx);
-                    
-                    positions.push(position);
-                    normals.push(normal);
-                });
-
-                // Add triangle indices
-                const baseIndex = positions.length - 3;
-                indices.push([
-                    baseIndex,
-                    baseIndex + 1,
-                    baseIndex + 2
-                ]);
-            }
-        });
-
-        // Validate generated geometry
-        if (positions.length === 0 || normals.length === 0 || indices.length === 0) {
-            throw new Error('Generated geometry is empty');
+    function computeFaceNormal(face) {
+        if (face.length < 3) return [0, 1, 0];
+        
+        const v1 = mesh.vertices[face[0]];
+        const v2 = mesh.vertices[face[1]];
+        const v3 = mesh.vertices[face[2]];
+        
+        if (!v1 || !v2 || !v3) return [0, 1, 0];
+        
+        const edge1 = [
+            v2[0] - v1[0],
+            v2[1] - v1[1],
+            v2[2] - v1[2]
+        ];
+        const edge2 = [
+            v3[0] - v1[0],
+            v3[1] - v1[1],
+            v3[2] - v1[2]
+        ];
+        
+        const normal = [
+            edge1[1] * edge2[2] - edge1[2] * edge2[1],
+            edge1[2] * edge2[0] - edge1[0] * edge2[2],
+            edge1[0] * edge2[1] - edge1[1] * edge2[0]
+        ];
+        
+        const len = Math.sqrt(
+            normal[0] * normal[0] + 
+            normal[1] * normal[1] + 
+            normal[2] * normal[2]
+        );
+        
+        if (len > 0.000001) {
+            normal[0] /= len;
+            normal[1] /= len;
+            normal[2] /= len;
         }
-
-        return {
-            "triangles": indices,
-            "attributes": [positions, normals]
-        };
-    } catch (error) {
-        console.error('Error generating geometry:', error);
-        // Return minimal valid geometry as fallback
+        
+        return normal;
+    }
+    
+    // Handle both triangular and quad faces
+    mesh.faces.forEach((face, faceIdx) => {
+        if (face.length < 3) return;
+            
+        const faceNormal = computeFaceNormal(face);
+        
+        // Verify all vertices are valid
+        const faceVertices = face.map(vIdx => mesh.vertices[vIdx])
+                                .filter(v => v !== null && v !== undefined);
+        
+        if (faceVertices.length < 3) return;
+        
+        // Add vertices and normals
+        faceVertices.forEach(vertex => {
+            positions.push(vertex);
+            normals.push(faceNormal);
+        });
+        
+        // Triangulate the face using fan triangulation
+        const baseIndex = positions.length - faceVertices.length;
+        for (let i = 1; i < faceVertices.length - 1; i++) {
+            indices.push([
+                baseIndex,
+                baseIndex + i,
+                baseIndex + i + 1
+            ]);
+        }
+    });
+    
+    // Check if we have valid geometry
+    if (positions.length === 0 || normals.length === 0 || indices.length === 0) {
+        // Return a minimal valid geometry if no valid faces were found
         return {
             "triangles": [[0, 1, 2]],
             "attributes": [
@@ -625,8 +603,12 @@ function meshToGeometry(mesh) {
             ]
         };
     }
+    
+    return {
+        "triangles": indices,
+        "attributes": [positions, normals]
+    };
 }
-
 
 
 
