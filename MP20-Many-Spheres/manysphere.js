@@ -9,13 +9,14 @@ const RESET_INTERVAL_SECONDS = 15
 const ELASTICITY = 0.9
 const G = 3 // self-defined value
 
-var numberSpheres = 50
+var numberSpheres = 2
 const MAX_V = 3
 var spherePositions = []    // reset every RESET_INTERVAL_SECONDS
 var sphereVelocity = []     // reset every RESET_INTERVAL_SECONDS
 var sphereColors = []
 var sphereRadius = []
 var sphereMass = []
+var posBuff
 var lastResetSecond = 0
 var previousSecond = 0
 
@@ -76,53 +77,26 @@ function supplyDataBuffer(data, loc, mode) {
     const f32 = new Float32Array(data.flat())
     gl.bufferData(gl.ARRAY_BUFFER, f32, mode)
 
-    gl.vertexAttribPointer(loc, data[0].length, gl.FLOAT, false, 0, 0)
+    gl.vertexAttribPointer(loc, (data[0].length||1), gl.FLOAT, false, 0, 0)
     gl.enableVertexAttribArray(loc)
 
     return buf;
 }
 
-/**
- * Creates a Vertex Array Object and puts into it all of the data in the given
- * JSON structure, which should have the following form:
- *
- * ````
- * {"triangles": a list of of indices of vertices
- * ,"attributes":
- *  [ a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 0
- *  , a list of 1-, 2-, 3-, or 4-vectors, one per vertex to go in location 1
- *  , ...
- *  ]
- * }
- * ````
- *
- * @returns an object with four keys:
- *  - mode = the 1st argument for gl.drawElements
- *  - count = the 2nd argument for gl.drawElements
- *  - type = the 3rd argument for gl.drawElements
- *  - vao = the vertex array object for use with gl.bindVertexArray
- */
-function setupGeomery(geom) {
-    var triangleArray = gl.createVertexArray()
-    gl.bindVertexArray(triangleArray)
-
-    for(let i=0; i<geom.attributes.length; i+=1) {
-        let data = geom.attributes[i]
-        supplyDataBuffer(data, i)
-    }
-
-    var indices = new Uint16Array(geom.triangles.flat())
-    var indexBuffer = gl.createBuffer()
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
-
-    return {
-        mode: gl.TRIANGLES,
-        count: indices.length,
-        type: gl.UNSIGNED_SHORT,
-        vao: triangleArray
-    }
+/** set up points */
+function setupPoints() {
+    posBuff = supplyDataBuffer(spherePositions, 0, gl.DYNAMIC_DRAW)
+    supplyDataBuffer(sphereRadius, 1, gl.STATIC_DRAW)
+    supplyDataBuffer(sphereColors, 2, gl.STATIC_DRAW)
 }
+
+/** update positions */
+function updatePoints() {
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuff)
+    const f32 = new Float32Array(spherePositions.flat())
+    gl.bufferData(gl.ARRAY_BUFFER, f32, gl.DYNAMIC_DRAW)
+}
+
 
 /** simulate each sphere's movement */
 function simulatePhysic(deltaSeconds) {
@@ -182,7 +156,7 @@ function draw(seconds) {
     // gl.clearColor(...IlliniBlue) // f(...[1,2,3]) means f(1,2,3)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     gl.useProgram(program)
-    gl.bindVertexArray(sphere.vao)
+    updatePoints()
 
     const eyePosition = [2.5, 0, 0.5]
     let v = m4view(eyePosition, [0,0,0], [0,0,1])
@@ -196,14 +170,10 @@ function draw(seconds) {
 
     gl.uniformMatrix4fv(program.uniforms.p, false, p)
 
-    for (let i = 0; i < numberSpheres; i+=1) {
-        let rad = sphereRadius[i]
-        let scale = m4scale(rad,rad,rad)
-        let mv = m4mul(v, m4trans(...spherePositions[i]), scale)
-        gl.uniformMatrix4fv(program.uniforms.mv, false, mv)
-        gl.uniform4fv(program.uniforms.color, sphereColors[i])
-        gl.drawElements(sphere.mode, sphere.count, sphere.type, 0)
-    }
+    gl.uniform1f(program.uniforms.x, gl.canvas.width)
+    gl.uniform1f(program.uniforms.projx, p[0]) // proj[0][0]
+    gl.uniformMatrix4fv(program.uniforms.mv, false, v)
+    gl.drawArrays(gl.POINTS, 0, numberSpheres)
 }
 
 /** Compute any time-varying or animated aspects of the scene */
@@ -250,6 +220,14 @@ function initSimulation() {
         sphereVelocity.push([0,0,0])
     }
     resetSimulation()
+    setupPoints()
+    const numAttribs = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
+    for (let ii = 0; ii < numAttribs; ++ii) {
+        const attribInfo = gl.getActiveAttrib(program, ii);
+        console.log(attribInfo)
+        const data = gl.getVertexAttrib(ii, gl.CURRENT_VERTEX_ATTRIB);
+        console.log(data);
+    }
 }
 
 // reset each sphere's pos, velocity
@@ -270,8 +248,6 @@ window.addEventListener('load', async (event) => {
     let fs = await fetch('fragmentShader.glsl').then(res => res.text())
     window.program = compileShader(vs,fs)
     gl.enable(gl.DEPTH_TEST)
-    let sphere = await fetch('sphere.json').then(r=>r.json())
-    window.sphere = setupGeomery(sphere)
     fillScreen()
     window.addEventListener('resize', fillScreen)
     numberSpheres = Number(document.querySelector('#spheres').value) || 1
