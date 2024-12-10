@@ -12,6 +12,8 @@ out vec4 vcolor;
 
 void main() {
     gl_Position = p * mv * position;
+
     gl_PointSize = x * projx * radius / gl_Position.w;
+    
     vcolor = color;
 }
