@@ -16,6 +16,12 @@ class Material;
 class Vector3;
 class Vector4;
 
+enum class CameraType {
+        CLASSIC,
+        FISHEYE,
+        PANORAMA
+    };
+
 // Constants
 constexpr float MIN_INTERSECTION_DISTANCE = 0.0001f;
 constexpr float SHADOW_BIAS = 0.0001f;
@@ -26,7 +32,6 @@ struct IntersectionInfo {
     Material* material;
     Vector3 surfaceNormal;
 };
-
 
 
 class Ray {
@@ -192,22 +197,30 @@ private:
     std::vector<LightSource*> lights_;
 };
 
+// Replace the existing Camera class with this new version
 class Camera {
 public:
-    Camera(const Vector3& position, const Vector3& lookDirection, const Vector3& upDirection)
-        : position_(position) {
-        forward_ = lookDirection.getNormalized();
+    Camera(const Vector3& position, const Vector3& lookDirection, const Vector3& upDirection,
+       CameraType type, int width, int height)
+    : position_(position), width_(width), height_(height), type_(type) 
+    {
+        // Don't normalize forward vector to support zoom through vector length
+        forward_ = lookDirection;
+        
+        // Create orthonormal basis
         right_ = Vector3::crossProduct(forward_, upDirection).getNormalized();
-        up_ = Vector3::crossProduct(right_, forward_);
+        up_ = Vector3::crossProduct(right_, forward_).getNormalized();
     }
 
     Ray generateRay(float screenX, float screenY) const {
-        Vector3 direction = forward_.plus(
-            right_.times(screenX).plus(
-                up_.times(screenY)
-            )
-        );
-        return Ray(position_, direction.getNormalized());
+        switch (type_) {
+            case CameraType::FISHEYE:
+                return generateFisheyeRay(screenX, screenY);
+            case CameraType::PANORAMA:
+                return generatePanoramaRay(screenX, screenY);
+            default:
+                return generateClassicRay(screenX, screenY);
+        }
     }
 
 private:
@@ -215,6 +228,58 @@ private:
     Vector3 forward_;
     Vector3 right_;
     Vector3 up_;
+    int width_;
+    int height_;
+    CameraType type_;
+
+    Ray generateClassicRay(float screenX, float screenY) const {
+        float focalLength = 1.0f;  // Or compute based on desired field of view
+        Vector3 direction = forward_.times(focalLength).plus(
+            right_.times(screenX).plus(
+                up_.times(screenY)
+            )
+    );
+    
+    return Ray(position_, direction.getNormalized());
+    }
+
+    Ray generateFisheyeRay(float screenX, float screenY) const {
+        float r2 = screenX * screenX + screenY * screenY;
+    
+        if (r2 > 1.0f) {
+            return Ray(position_, Vector3::ZERO);
+        }
+
+        // Use 1−sx²−sy² * forward as specified
+        float scale = std::sqrt(1.0f - r2);
+        Vector3 direction = forward_.times(scale).plus(
+            right_.times(screenX).plus(
+                up_.times(screenY)
+            )
+        );
+        
+        return Ray(position_, direction.getNormalized());
+    }
+
+    Ray generatePanoramaRay(float screenX, float screenY) const {
+        // Map screen coordinates to spherical coordinates
+        float theta = (screenX + 1.0f) * M_PI;  // longitude: [-π, π]
+        float phi = (1.0f - screenY) * M_PI;    // latitude: [0, π]
+
+        // Convert spherical to Cartesian coordinates
+        float sinPhi = std::sin(phi);
+        float cosPhi = std::cos(phi);
+        float sinTheta = std::sin(theta);
+        float cosTheta = std::cos(theta);
+
+        Vector3 direction = forward_.times(cosPhi * cosTheta).plus(
+            right_.times(cosPhi * sinTheta).plus(
+                up_.times(sinPhi)
+            )
+        );
+
+        return Ray(position_, direction.getNormalized());
+    }
 };
 
 class ImageRenderer {
@@ -368,13 +433,15 @@ public:
         bool useExposure = false;
         float exposureValue = 1.0f;
         std::vector<Vector3> vertices;
+        CameraType cameraType = CameraType::CLASSIC;  // Updated to use the new enum
 
         Config() {
             materials.push_back(std::make_unique<Material>(Vector3(1, 1, 1)));
         }
 
         Camera createCamera() const {
-            return Camera(cameraPosition, cameraForward, cameraUp);
+            return Camera(cameraPosition, cameraForward, cameraUp, 
+                        cameraType, imageWidth, imageHeight);
         }
     };
 
@@ -419,6 +486,14 @@ private:
         if (cmd == "plane") return processPlane(command, config);
         if (cmd == "xyz") return processVertex(command, config);
         if (cmd == "tri") return processTriangle(command, config);
+        if (cmd == "fisheye") {
+            config.cameraType = CameraType::FISHEYE;
+            return true;
+        }
+        if (cmd == "panorama") {
+            config.cameraType = CameraType::PANORAMA;
+            return true;
+        }
         
         return false;
     }
@@ -591,10 +666,6 @@ private:
         config.scene.addObject(triangle.release());
         return true;
     }
-
-
-
-    // [Additional command processing methods follow similar pattern...]
 };
 
 

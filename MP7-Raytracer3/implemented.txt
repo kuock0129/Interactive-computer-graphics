@@ -1,6 +1,7 @@
 exposure
 suns
 camera
+lenses
 plane
 triangle
 bulb
