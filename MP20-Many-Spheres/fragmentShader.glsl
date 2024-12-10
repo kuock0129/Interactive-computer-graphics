@@ -13,9 +13,10 @@ void main() {
     if (length(cood) > 1.0) discard;
     float nz = sqrt(1.0 - nx*nx - ny*ny); // camera is [0,0,-1]
     vec3 n = vec3(nx, ny, nz);
+
     float lambert = max(dot(n, lightdir), 0.0);
-    float blinn = pow(max(dot(n, halfway), 0.0), 50.0);
+    
     fragColor = vec4(
-        vcolor.rgb * (lightcolor * lambert) + (lightcolor * blinn) * 0.4
+        vcolor.rgb * (lightcolor * lambert)
         , vcolor.a);
 }

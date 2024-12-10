@@ -17,6 +17,9 @@ var sphereColors = []
 var sphereRadius = []
 var sphereMass = []
 var posBuff
+var mp
+var gridSize
+var gridLen
 var lastResetSecond = 0
 var previousSecond = 0
 
@@ -98,6 +101,59 @@ function updatePoints() {
 }
 
 
+
+/** handle collision by updating
+ * @param i vertex index
+ * @param j vertex index
+ * @param newVelocity velocity array
+ */
+function handleCollision(i, j, newVelocity) {
+    const displacement = sub(spherePositions[j], spherePositions[i])
+    const d2 = magDot(displacement)
+    const ddoti = dot(displacement, sphereVelocity[i])
+    const ddotj = dot(displacement, sphereVelocity[j])
+    const rr = (sphereRadius[i] + sphereRadius[j])
+    if ((d2 < rr**2) &&
+        (dot(displacement, sub(sphereVelocity[i], sphereVelocity[j])) > 0)
+    ) {
+        const si = mul(displacement, ddoti / d2)
+        const sj = mul(displacement, ddotj / d2)
+        const s = sub(si, sj)
+        const sumMass = sphereMass[i] + sphereMass[j]
+        const wi = sphereMass[j] / sumMass
+        const wj = sphereMass[i] / sumMass
+        const bi = mul(s, -wi * (1 + ELASTICITY))
+        const bj = mul(s, wj * (1 + ELASTICITY))
+        newVelocity[i] = add(newVelocity[i], bi)
+        newVelocity[j] = add(newVelocity[j], bj)
+    }
+}
+/** update collision map */
+function updateMap() {
+    let nmp = []
+    for (let i = 0; i < gridSize; i += 1) {
+        let row = []
+        for (let j = 0; j < gridSize; j += 1) {
+            let col = []
+            for (let k = 0; k < gridSize; k += 1) {
+                col.push([])
+            }
+            row.push(col)
+        }
+        nmp.push(row)
+    }
+    for (let i = 0; i < numberSpheres; i+=1) {
+        const pos = spherePositions[i]
+        const x = Math.floor((pos[0] + cubeWall) / gridLen)
+        const y = Math.floor((pos[1] + cubeWall) / gridLen)
+        const z = Math.floor((pos[2] + cubeWall) / gridLen)
+        nmp[x][y][z].push(i)
+    }
+    mp = nmp
+}
+
+
+
 /** simulate each sphere's movement */
 function simulatePhysic(deltaSeconds) {
     for (let i = 0; i < numberSpheres; i += 1) {
@@ -120,35 +176,41 @@ function simulatePhysic(deltaSeconds) {
         }
     }
     newVelocity = [...sphereVelocity]
-    for (let i = 0; i < numberSpheres; i += 1) {
-        // handle collision
-        for (let j = 0; j < i; j += 1) {
-            const displacement = sub(spherePositions[j], spherePositions[i])
-            const d2 = magDot(displacement)
-            const ddoti = dot(displacement, sphereVelocity[i])
-            const ddotj = dot(displacement, sphereVelocity[j])
-            const rr = (sphereRadius[i] + sphereRadius[j])
-            if ((d2 < rr**2) &&
-                (dot(displacement, sub(sphereVelocity[i], sphereVelocity[j])) > 0)
-            ) {
-                const si = mul(displacement, ddoti / d2)
-                const sj = mul(displacement, ddotj / d2)
-                const s = sub(si, sj)
-                const sumMass = sphereMass[i] + sphereMass[j]
-                const wi = sphereMass[j] / sumMass
-                const wj = sphereMass[i] / sumMass
-                const bi = mul(s, -wi * (1 + ELASTICITY))
-                const bj = mul(s, wj * (1 + ELASTICITY))
-                newVelocity[i] = add(newVelocity[i], bi)
-                newVelocity[j] = add(newVelocity[j], bj)
+    // collision
+    for (let i = 0; i < gridSize; i += 1) {
+        for (let j = 0; j < gridSize; j += 1) {
+            for (let k = 0; k < gridSize; k += 1) {
+                let cur = mp[i][j][k]
+                for (let s = 0; s < cur.length; s += 1) {
+                    // check self-collision
+                    for (let t = 0; t < s; t++) {
+                        handleCollision(cur[s], cur[t], newVelocity)
+                    }
+                    const dir = [[0,0,1],[0,1,0],[1,0,0],
+                        [1,1,0],[1,0,1],[0,1,1],[1,1,1]]
+                    for (let d of dir) {
+                        if ((i + d[0] >= gridSize) ||
+                            (j + d[1] >= gridSize) ||
+                            (k + d[2] >= gridSize)) {
+                            continue
+                        }
+                        let neighbors = mp[i+d[0]][j+d[1]][k+d[2]]
+                        for (let t = 0; t < neighbors.length; t++) {
+                            handleCollision(cur[s], neighbors[t], newVelocity)
+                        }
+                    }
+                }
             }
         }
 
         // create gravity
-        const Z_AXIS = 2
-        newVelocity[i][Z_AXIS] -= G * deltaSeconds
+        for (let i = 0; i < numberSpheres; i += 1) {
+            const Z_AXIS = 2
+            newVelocity[i][Z_AXIS] -= G * deltaSeconds
+        }
     }
     sphereVelocity = newVelocity
+    updateMap()
 }
 
 /** Draw one frame */
@@ -188,7 +250,7 @@ function tick(milliseconds) {
         lastResetSecond = seconds
     }
     previousSecond = seconds
-    simulatePhysic(deltaSeconds)
+    simulatePhysic(0.5*deltaSeconds)
     draw(seconds)
     requestAnimationFrame(tick)
 }
@@ -221,13 +283,9 @@ function initSimulation() {
     }
     resetSimulation()
     setupPoints()
-    const numAttribs = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
-    for (let ii = 0; ii < numAttribs; ++ii) {
-        const attribInfo = gl.getActiveAttrib(program, ii);
-        console.log(attribInfo)
-        const data = gl.getVertexAttrib(ii, gl.CURRENT_VERTEX_ATTRIB);
-        console.log(data);
-    }
+    gridLen = Math.ceil(2.0/numberSpheres**(1/3)) // 2.0 > 2 * 1.25 * 0.75
+    gridSize = Math.ceil(cubeWidth / gridLen)
+    updateMap()
 }
 
 // reset each sphere's pos, velocity
