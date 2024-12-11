@@ -1,5 +1,6 @@
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <functional>   
 #include <algorithm>    
 #include <vector>
@@ -338,12 +339,12 @@ public:
         _zbuff.resize(width*height, DBL_MAX);
     }
 
-    void SetDepth() { _useDepth = true; }
-    void SetsRBG() { _usesRGB = true; }
+    void setDepth() { _useDepth = true; }
+    void setsRBG() { _usesRGB = true; }
 
-    const string &GetName() const { return _name; }
-    int GetWidth() const { return _width; }
-    int GetHeight() const { return _height; }
+    const string &getName() const { return _name; }
+    int getWidth() const { return _width; }
+    int getHeight() const { return _height; }
 
     // In the Picture::render method, change:
     int render(const Vertex &v, Texture *texture) {
@@ -456,46 +457,8 @@ private:
     }
 };
 
-// Utilities
-static size_t getToken(const string& str, string& tok, size_t pos = 0)
-{
-   const string del = " \t";
-   size_t begin = str.find_first_not_of(del, pos);
-   if (begin == string::npos) { tok = ""; return begin; }
-   size_t end = str.find_first_of(del, begin);
-   tok = str.substr(begin, end - begin);
-   return end;
-}
 
-static bool toInt(const string& str, int& num)
-{
-   num = 0;
-   size_t i = 0;
-   int sign = 1;
-   if (str[0] == '-') { sign = -1; i = 1; }
-   bool valid = false;
-   for (; i < str.size(); ++i) {
-      if (isdigit(str[i])) {
-         num *= 10;
-         num += int(str[i] - '0');
-         valid = true;
-      }
-      else return false;
-   }
-   num *= sign;
-   return valid;
-}
 
-static void parseLineToCommand(const string &line, vector<string> &command) {
-    string token;
-    size_t pos = getToken(line, token);
-    while (!token.empty()) {
-        command.push_back(token);
-        pos = getToken(line, token, pos);
-    }
-}
-
-// DDA
 int DDA(Vertex a, Vertex b, int n, std::function<void(const Vertex &v)> fn) {
     if (a[n] > b[n]) swap(a, b);
     else if (a[n] == b[n]) return 0;
@@ -555,9 +518,9 @@ public:
             r.SetData(matrix->mul(c), 0);
         }
         // transform array
-        p = p.normalize(picture.GetWidth(), picture.GetHeight(), enable_hyp),
-        q = q.normalize(picture.GetWidth(), picture.GetHeight(), enable_hyp),
-        r = r.normalize(picture.GetWidth(), picture.GetHeight(), enable_hyp);
+        p = p.normalize(picture.getWidth(), picture.getHeight(), enable_hyp),
+        q = q.normalize(picture.getWidth(), picture.getHeight(), enable_hyp),
+        r = r.normalize(picture.getWidth(), picture.getHeight(), enable_hyp);
         Texture *tex = texture;
         DDATraverse(p, q, r, [&picture, enable_hyp, tex](const Vertex &v_n) {
             Vertex to_render = v_n.undo(enable_hyp);
@@ -571,120 +534,186 @@ private:
 
 Rasterizer rasterizer;
 
-// helper
-int parsePng(const vector<string> &command, Picture &picture) {
+
+
+
+
+
+
+int processPng(const vector<string> &keyword, Picture &picture) {
     const int PNG_CMD_SIZE = 4;
-    if (command.size() != PNG_CMD_SIZE) {
+    if (keyword.size() != PNG_CMD_SIZE) {
         return -1;
     }
-    int h, w;
-    if (!toInt(command[1], w) || !toInt(command[2], h)) {
+    try {
+        int w = stoi(keyword[1]);
+        int h = stoi(keyword[2]);
+        picture.setup(keyword[3], w, h);
+        return 0;
+    } catch (const std::exception&) {
         return -1;
     }
-    picture.setup(command[3], w, h);
-    return 0;
 }
 
-void updateData(const vector<string> &command, const int dimension, vector<Vertex> &vertices, int offset)
+void updateData(const vector<string> &keyword, const int dimension, vector<Vertex> &vertices, int offset)
 {
     int idx = 0;
-    for (int i = 2; i < command.size(); i += dimension) {
+    for (int i = 2; i < keyword.size(); i += dimension) {
         vector<double> arr(dimension);
         for (int j = 0; j < dimension; j++) {
-            arr[j] = stod(command[i + j]);
+            arr[j] = stod(keyword[i + j]);
         }
         if (idx == vertices.size()) vertices.push_back(Vertex());
         vertices[idx++].SetData(arr, offset);
     }
 }
 
-int parsePosition(const vector<string> &command, vector<Vertex> &vertices) {
-    int dimension = 0;
-    if (!toInt(command[1], dimension)) {
+int processPosition(const vector<string> &keyword, vector<Vertex> &vertices) {
+    try {
+        int dimension = stoi(keyword[1]);
+        updateData(keyword, dimension, vertices, 0);
+        return 0;
+    } catch (const std::exception&) {
         return -1;
     }
-    updateData(command, dimension, vertices, 0);
-    return 0;
 }
 
-int parseColor(const vector<string> &command, vector<Vertex> &vertices) {
-    int dimension = 0;
-    if (!toInt(command[1], dimension)) {
+int processColor(const vector<string> &keyword, vector<Vertex> &vertices) {
+    try {
+        int dimension = stoi(keyword[1]);
+        updateData(keyword, dimension, vertices, 4);
+        return 0;
+    } catch (const std::exception&) {
         return -1;
     }
-    updateData(command, dimension, vertices, 4);
-    return 0;
 }
 
-int parseElements(const vector<string> &command, vector<int> &elements) {
-    int idx;
+int processElements(const vector<string> &keyword, vector<int> &elements) {
     elements.clear();
-    for (int i = 1; i < command.size(); i++) {
-        if (!toInt(command[i], idx)) return -1;
-        elements.push_back(idx);
+    try {
+        for (size_t i = 1; i < keyword.size(); i++) {
+            elements.push_back(stoi(keyword[i]));
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
     }
-    return 0;
 }
 
-int parseMatrix(const vector<string> &command) {
+
+int processMatrix(const vector<string> &keyword) {
     int idx;
-    if (command.size() != 17) return -1;
+    if (keyword.size() != 17) return -1;
     vector<double> data;
     data.reserve(16);
-    for (int i = 1; i < command.size(); i++) {
-        data.push_back(stod(command[i]));
+    for (int i = 1; i < keyword.size(); i++) {
+        data.push_back(stod(keyword[i]));
     }
     if (matrix) delete matrix;
     matrix = new Matrix4(data);
     return 0;
 }
 
-int resetTexture(const vector<string> &command, Texture **texture) {
-    if (command.size() != 2) return -1;
+int resetTexture(const vector<string> &keyword, Texture **texture) {
+    if (keyword.size() != 2) return -1;
     if (*texture)
         delete *texture;
-    *texture = new Texture(command[1]);
+    *texture = new Texture(keyword[1]);
     return 0;
 }
 
-int parseTexcood(const vector<string> &command, vector<Vertex> &vertices) {
-    int dimension = 0;
-    if (!toInt(command[1], dimension)) {
+int processTexcood(const vector<string> &keyword, vector<Vertex> &vertices) {
+    try {
+        int dimension = stoi(keyword[1]);
+        assert(dimension == 2);
+        updateData(keyword, dimension, vertices, 8); // for cood
+        return 0;
+    } catch (const std::exception&) {
         return -1;
     }
-    assert(dimension == 2);
-    updateData(command, dimension, vertices, 8); // for cood
-    return 0;
 }
 
-int drawArraysTriangles(vector<string> command, Picture &picture,
+int drawArraysTriangles(vector<string> keyword, Picture &picture,
                 const vector<Vertex> &vertices, Texture *texture) {
-    int start, count;
-    if (command.size() != 3 || !toInt(command[1], start) || !toInt(command[2], count)) {
+    if (keyword.size() != 3) {
         return -1;
     }
-    rasterizer.SetTexture(texture);
-    for (int i = start; i < start + count; i += 3) {
-        rasterizer.DrawTriangle(vertices[i], vertices[i+1], vertices[i+2],
-                                picture, enable_hyp);
+    try {
+        int start = stoi(keyword[1]);
+        int count = stoi(keyword[2]);
+        rasterizer.SetTexture(texture);
+        for (int i = start; i < start + count; i += 3) {
+            rasterizer.DrawTriangle(vertices[i], vertices[i+1], vertices[i+2],
+                                  picture, enable_hyp);
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+
+
+int drawElementsTriangles(vector<string> keyword, Picture &picture,
+                const vector<Vertex> &vertices, const vector<int> &elements, Texture *texture) {
+    if (keyword.size() != 3) {
+        return -1;
+    }
+    try {
+        int count = stoi(keyword[1]);
+        int offset = stoi(keyword[2]);
+        rasterizer.SetTexture(texture);
+        for (int i = offset; i < offset + count; i += 3) {
+            rasterizer.DrawTriangle(vertices[elements[i]], vertices[elements[i+1]],
+                                  vertices[elements[i+2]], picture, enable_hyp);
+        }
+        return 0;
+    } catch (const std::exception&) {
+        return -1;
+    }
+}
+
+
+int processkeywords(ifstream& file, Picture& picture, vector<Vertex>& vertices, 
+                   vector<int>& elements, Texture*& texture) {
+    string line;
+    while (getline(file, line)) {
+        vector<string> keyword;
+        istringstream iss(line);
+        string token;
+        while (iss >> token) {
+            keyword.push_back(token);
+        }
+        if (keyword.empty()) continue;
+        
+        if (keyword[0] == "png")
+            processPng(keyword, picture);
+        else if (keyword[0] == "position")
+            processPosition(keyword, vertices);
+        else if (keyword[0] == "color")
+            processColor(keyword, vertices);
+        else if (keyword[0] == "drawArraysTriangles")
+            drawArraysTriangles(keyword, picture, vertices, texture);
+        else if (keyword[0] == "depth")
+            picture.setDepth();
+        else if (keyword[0] == "elements")
+            processElements(keyword, elements);
+        else if (keyword[0] == "drawElementsTriangles")
+            drawElementsTriangles(keyword, picture, vertices, elements, texture);
+        else if (keyword[0] == "uniformMatrix")
+            processMatrix(keyword);
+        else if (keyword[0] == "texture")
+            resetTexture(keyword, &texture);
+        else if (keyword[0] == "texcoord")
+            processTexcood(keyword, vertices);
+        else if (keyword[0] == "sRGB")
+            picture.setsRBG();
+        else if (keyword[0] == "hyp")
+            enable_hyp = true;
     }
     return 0;
 }
 
-int drawElementsTriangles(vector<string> command, Picture &picture,
-                const vector<Vertex> &vertices, const vector<int> &elements, Texture *texture)
-{
-    int count, offset;
-    if (command.size() != 3 || !toInt(command[1], count) || !toInt(command[2], offset)) {
-        return -1;
-    }
-    rasterizer.SetTexture(texture);
-    for (int i = offset; i < offset + count; i += 3) {
-        rasterizer.DrawTriangle(vertices[elements[i]], vertices[elements[i+1]],
-                                vertices[elements[i+2]], picture, enable_hyp);
-    }
-    return 0;
-}
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -695,38 +724,10 @@ int main(int argc, char *argv[]) {
     vector<Vertex> vertices;
     vector<int> elements;
     Texture *texture = nullptr;
-    ifstream fin(argv[1]);
-    string line;
-    while (getline(fin, line)) {
-        vector<string> command;
-        parseLineToCommand(line, command);
-        if (command.empty()) continue;
-        
-        if (command[0] == "png")
-            parsePng(command, picture);
-        else if (command[0] == "position")
-            parsePosition(command, vertices);
-        else if (command[0] == "color")
-            parseColor(command, vertices);
-        else if (command[0] == "drawArraysTriangles")
-            drawArraysTriangles(command, picture, vertices, texture);
-        else if (command[0] == "depth")
-            picture.SetDepth();
-        else if (command[0] == "elements")
-            parseElements(command, elements);
-        else if (command[0] == "drawElementsTriangles")
-            drawElementsTriangles(command, picture, vertices, elements, texture);
-        else if (command[0] == "uniformMatrix")
-            parseMatrix(command);
-        else if (command[0] == "texture")
-            resetTexture(command, &texture);
-        else if (command[0] == "texcoord")
-            parseTexcood(command, vertices);
-        else if (command[0] == "sRGB")
-            picture.SetsRBG();
-        else if (command[0] == "hyp")
-            enable_hyp = true;
-    }
+    
+    ifstream file(argv[1]);
+    processkeywords(file, picture, vertices, elements, texture);
+    
     picture.ExportPNG();
     if (texture) delete texture;
     if (matrix) delete matrix;
