@@ -1,144 +1,246 @@
-#include <float.h>      /* DBL_MAX */
-#include <math.h>       /* ceil */
-#include <assert.h>     // assert
 #include <fstream>
 #include <iostream>
 #include <functional>   
 #include <algorithm>    
 #include <vector>
+#include <float.h>      
+#include <math.h>       
+#include <assert.h>     
 #include "uselibpng.h"
-
 using namespace std;
-typedef unsigned char uc;
 
-// global variables
 bool enable_hyp = false;
-
 struct Position2 { int x; int y; };
-struct Color4 { uc r; uc g; uc b; uc a; };
+struct Color4 { unsigned char r; unsigned char g; unsigned char b; unsigned char a; };
 
 class Vertex {
 public:
-    Vertex(): _data(VERTEX_DIM, 0) {
-        _data[3] = 1.0; // w
-        _data[7] = 1.0; // alpha
+    // Direct member variables with underscore prefix
+    double _x{0}, _y{0}, _z{0}, _w{1.0}; // Position
+    double _r{0}, _g{0}, _b{0}, _a{1.0}; // Color
+    double _s{0}, _t{0};                 // Texture coordinates
+
+    // Accessor methods
+    double x() const { return _x; }
+    double y() const { return _y; }
+    double z() const { return _z; }
+    double w() const { return _w; }
+    double r() const { return _r; }
+    double g() const { return _g; }
+    double b() const { return _b; }
+    double a() const { return _a; }
+    double s() const { return _s; }
+    double t() const { return _t; }
+
+    // Accessor methods using references
+    double& operator[](size_t idx) {
+        switch(idx) {
+            case 0: return _x;
+            case 1: return _y;
+            case 2: return _z;
+            case 3: return _w;
+            case 4: return _r;
+            case 5: return _g;
+            case 6: return _b;
+            case 7: return _a;
+            case 8: return _s;
+            case 9: return _t;
+            default: throw std::out_of_range("Invalid index");
+        }
     }
 
-    double &x() { return _data[0]; }
-    double &y() { return _data[1]; }
-    double &z() { return _data[2]; }
-    double &w() { return _data[3]; }
-    double &r() { return _data[4]; }
-    double &g() { return _data[5]; }
-    double &b() { return _data[6]; }
-    double &a() { return _data[7]; }
-    double &s() { return _data[8]; }
-    double &t() { return _data[9]; }
-
-    double x() const { return _data[0]; }
-    double y() const { return _data[1]; }
-    double z() const { return _data[2]; }
-    double w() const { return _data[3]; }
-    double r() const { return _data[4]; }
-    double g() const { return _data[5]; }
-    double b() const { return _data[6]; }
-    double a() const { return _data[7]; }
-    double s() const { return _data[8]; }
-    double t() const { return _data[9]; }
-
-    double &operator[](size_t idx) { return _data[idx]; }
-    const double &operator[](size_t idx) const { return _data[idx]; }
-
-    Vertex operator-(const Vertex &v) {
-        Vertex ret;
-        for (int i = 0; i < VERTEX_DIM; i++) {
-            ret[i] = _data[i] - v[i];
+    const double& operator[](size_t idx) const {
+        switch(idx) {
+            case 0: return _x;
+            case 1: return _y;
+            case 2: return _z;
+            case 3: return _w;
+            case 4: return _r;
+            case 5: return _g;
+            case 6: return _b;
+            case 7: return _a;
+            case 8: return _s;
+            case 9: return _t;
+            default: throw std::out_of_range("Invalid index");
         }
+    }
+
+    Vertex operator-(const Vertex &v) const {
+        Vertex ret;
+        ret._x = _x - v._x;
+        ret._y = _y - v._y;
+        ret._z = _z - v._z;
+        ret._w = _w - v._w;
+        ret._r = _r - v._r;
+        ret._g = _g - v._g;
+        ret._b = _b - v._b;
+        ret._a = _a - v._a;
+        ret._s = _s - v._s;
+        ret._t = _t - v._t;
         return ret;
     }
 
-    Vertex operator+(const Vertex &v) {
+    Vertex operator+(const Vertex &v) const {
         Vertex ret;
-        for (int i = 0; i < VERTEX_DIM; i++) {
-            ret[i] = _data[i] + v[i];
-        }
+        ret._x = _x + v._x;
+        ret._y = _y + v._y;
+        ret._z = _z + v._z;
+        ret._w = _w + v._w;
+        ret._r = _r + v._r;
+        ret._g = _g + v._g;
+        ret._b = _b + v._b;
+        ret._a = _a + v._a;
+        ret._s = _s + v._s;
+        ret._t = _t + v._t;
         return ret;
     }
 
-    Vertex operator/(const double div) {
+    Vertex operator/(const double div) const {
+        if (div == 0) return Vertex();
         Vertex ret;
-        if (div == 0) return ret;
-        for (int i = 0; i < VERTEX_DIM; i++) {
-            ret[i] = _data[i] / div;
-        }
+        ret._x = _x / div;
+        ret._y = _y / div;
+        ret._z = _z / div;
+        ret._w = _w / div;
+        ret._r = _r / div;
+        ret._g = _g / div;
+        ret._b = _b / div;
+        ret._a = _a / div;
+        ret._s = _s / div;
+        ret._t = _t / div;
         return ret;
     }
 
-    Vertex operator*(const double mul) {
+    Vertex operator*(const double mul) const {
         Vertex ret;
-        for (int i = 0; i < VERTEX_DIM; i++) {
-            ret[i] = _data[i] * mul;
-        }
+        ret._x = _x * mul;
+        ret._y = _y * mul;
+        ret._z = _z * mul;
+        ret._w = _w * mul;
+        ret._r = _r * mul;
+        ret._g = _g * mul;
+        ret._b = _b * mul;
+        ret._a = _a * mul;
+        ret._s = _s * mul;
+        ret._t = _t * mul;
         return ret;
     }
 
-    Vertex & operator+=(const Vertex &v) {
-        for (int i = 0; i < VERTEX_DIM; i++) {
-            _data[i] += v[i];
-        }
+    Vertex& operator+=(const Vertex &v) {
+        _x += v._x;
+        _y += v._y;
+        _z += v._z;
+        _w += v._w;
+        _r += v._r;
+        _g += v._g;
+        _b += v._b;
+        _a += v._a;
+        _s += v._s;
+        _t += v._t;
         return *this;
     }
 
-    Vertex w_norm(const int width, const int height, bool enable_hyp) const {
-        Vertex ret;
-        double w = this->w();
-        for (int i = 0; i < VERTEX_DIM; i++) {
-            if (i == 3) ret[i] = 1.0 / w;
-            else if (i < 3 || enable_hyp) ret[i] = _data[i] / w;
-            else ret[i] = _data[i];
-        }
-        ret[0] = (ret[0] + 1) * width / 2;
-        ret[1] = (ret[1] + 1) * height / 2;
-
-        return ret;
-    }
-
-    Vertex w_undo(bool enable_hyp) const {
-        Vertex ret;
-        double w = this->w();
-        for (int i = 0; i < VERTEX_DIM; i++) {
-            if (i == 3) ret[i] = 1.0 / w;
-            else if (i < 3) ret[i] = _data[i];
-            else if (!enable_hyp) ret[i] = _data[i];
-            else ret[i] = _data[i] / w;
-        }
-        return ret;
-    }
-
     void SetPos(const vector<double> &position) {
-        SetData(position, 0);
+        if (position.size() > 0) _x = position[0];
+        if (position.size() > 1) _y = position[1];
+        if (position.size() > 2) _z = position[2];
+        if (position.size() > 3) _w = position[3];
     }
 
     void SetColor(const vector<double> &color) {
-        SetData(color, 4);
+        if (color.size() > 0) _r = color[0];
+        if (color.size() > 1) _g = color[1];
+        if (color.size() > 2) _b = color[2];
+        if (color.size() > 3) _a = color[3];
     }
 
     void SetData(const vector<double> &data, int offset) {
-        for (int i = 0; i < data.size(); i++)
-            _data[offset + i] = data[i];
+        switch(offset) {
+            case 0: // Position
+                SetPos(data);
+                break;
+            case 4: // Color
+                SetColor(data);
+                break;
+            case 8: // Texture coordinates
+                if (data.size() > 0) _s = data[0];
+                if (data.size() > 1) _t = data[1];
+                break;
+        }
+    }
+
+    Vertex normalize(const int width, const int height, bool enable_hyp) const {
+        Vertex ret;
+        double w_val = this->_w;
+        
+        // Position normalization
+        ret._x = (_x / w_val + 1) * width / 2;
+        ret._y = (_y / w_val + 1) * height / 2;
+        ret._z = _z / w_val;
+        ret._w = 1.0 / w_val;
+        
+        // Color and texture coordinates
+        if (enable_hyp) {
+            ret._r = _r / w_val;
+            ret._g = _g / w_val;
+            ret._b = _b / w_val;
+            ret._a = _a / w_val;
+            ret._s = _s / w_val;
+            ret._t = _t / w_val;
+        } else {
+            ret._r = _r;
+            ret._g = _g;
+            ret._b = _b;
+            ret._a = _a;
+            ret._s = _s;
+            ret._t = _t;
+        }
+        
+        return ret;
+    }
+
+    Vertex undo(bool enable_hyp) const {
+        Vertex ret;
+        double w_val = this->_w;
+        
+        // Position always gets divided
+        ret._x = _x;
+        ret._y = _y;
+        ret._z = _z;
+        ret._w = 1.0 / w_val;
+        
+        // Color and texture coordinates only if enable_hyp is true
+        if (enable_hyp) {
+            ret._r = _r / w_val;
+            ret._g = _g / w_val;
+            ret._b = _b / w_val;
+            ret._a = _a / w_val;
+            ret._s = _s / w_val;
+            ret._t = _t / w_val;
+        } else {
+            ret._r = _r;
+            ret._g = _g;
+            ret._b = _b;
+            ret._a = _a;
+            ret._s = _s;
+            ret._t = _t;
+        }
+        
+        return ret;
     }
 
     friend auto operator<<(std::ostream& os, Vertex const& v) -> std::ostream& { 
-        os << "Vertex:\n  pos: " << v.x() << ", " << v.y() << ", " << v.z() << ", " << v.w() << '\n';
-        os << "  st: " << v.s() << ", " << v.t() << '\n';
+        os << "Vertex:\n  pos: " << v._x << ", " << v._y << ", " << v._z << ", " << v._w << '\n';
+        os << "  st: " << v._s << ", " << v._t << '\n';
         return os;
     }
 
 private:
-    static int VERTEX_DIM;
     vector<double> _data;
 };
-int Vertex::VERTEX_DIM = 10;
+
+
+
 
 class Matrix4 {
 public:
@@ -163,6 +265,11 @@ private:
     }
     vector<double> _mat;
 };
+
+
+
+
+
 Matrix4 *matrix = nullptr;
 
 class Texture {
@@ -319,11 +426,11 @@ private:
     vector<double> _zbuff;
     bool _useDepth = false, _usesRGB = false;
 
-    static inline uc linear_2char(double color) {
+    static inline unsigned char linear_2char(double color) {
         return round(color * 255);
     }
     
-    static inline uc sRGB_2char(double color) {
+    static inline unsigned char sRGB_2char(double color) {
         if (color <= 0.0031308)
             color *= 12.92;
         else
@@ -331,11 +438,11 @@ private:
         return round(color * 255);
     }
     
-    static inline double linear_2double(uc color) {
+    static inline double linear_2double(unsigned char color) {
         return (double)color / 255.0;
     }
     
-    static inline double sRGB_2double(uc color) {
+    static inline double sRGB_2double(unsigned char color) {
         double c = (double)color / 255.0;
         if (c <= 0.04045)
             c /= 12.92;
@@ -448,12 +555,12 @@ public:
             r.SetData(matrix->mul(c), 0);
         }
         // transform array
-        p = p.w_norm(picture.GetWidth(), picture.GetHeight(), enable_hyp),
-        q = q.w_norm(picture.GetWidth(), picture.GetHeight(), enable_hyp),
-        r = r.w_norm(picture.GetWidth(), picture.GetHeight(), enable_hyp);
+        p = p.normalize(picture.GetWidth(), picture.GetHeight(), enable_hyp),
+        q = q.normalize(picture.GetWidth(), picture.GetHeight(), enable_hyp),
+        r = r.normalize(picture.GetWidth(), picture.GetHeight(), enable_hyp);
         Texture *tex = texture;
         DDATraverse(p, q, r, [&picture, enable_hyp, tex](const Vertex &v_n) {
-            Vertex to_render = v_n.w_undo(enable_hyp);
+            Vertex to_render = v_n.undo(enable_hyp);
             picture.render(to_render, tex);
         });
     }
@@ -609,16 +716,16 @@ int main(int argc, char *argv[]) {
             parseElements(command, elements);
         else if (command[0] == "drawElementsTriangles")
             drawElementsTriangles(command, picture, vertices, elements, texture);
-        else if (command[0] == "sRGB")
-            picture.SetsRBG();
-        else if (command[0] == "hyp")
-            enable_hyp = true;
         else if (command[0] == "uniformMatrix")
             parseMatrix(command);
         else if (command[0] == "texture")
             resetTexture(command, &texture);
         else if (command[0] == "texcoord")
             parseTexcood(command, vertices);
+        else if (command[0] == "sRGB")
+            picture.SetsRBG();
+        else if (command[0] == "hyp")
+            enable_hyp = true;
     }
     picture.ExportPNG();
     if (texture) delete texture;
